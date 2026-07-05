@@ -36,6 +36,7 @@ import {
   type ReadingTreeSection,
 } from "../entities/reading-material";
 import {
+  createReadingFolder,
   createReadingMaterial,
   fetchReadingMaterials,
   fetchReadingTree,
@@ -335,11 +336,15 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const [activeTreeId, setActiveTreeId] = useState("all");
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [form, setForm] = useState<ReadingMaterialUpsertRequest>(emptyForm);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newFolderParentId, setNewFolderParentId] = useState<number | "">("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const totalMaterialCount = tree?.sourceTypes.reduce((sum, item) => sum + item.count, 0) ?? materials.length;
   const treeSections = useMemo(() => (tree ? buildTreeSections(tree, totalMaterialCount) : []), [tree, totalMaterialCount]);
   const activeNode = treeSections.flatMap((section) => section.nodes).find((node) => node.id === activeTreeId) ?? treeSections[0]?.nodes[0];
+  const activeFolderId = activeNode?.filter.kind === "folder" ? activeNode.filter.folderId : null;
   const selectedMaterial = materials.find((material) => material.id === selectedMaterialId) ?? materials[0] ?? null;
 
   const reloadTree = async () => {
@@ -386,15 +391,51 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   };
 
   const startNewMaterial = () => {
+    const targetFolderId = activeFolderId ?? tree?.folders[0]?.id ?? null;
+    if (targetFolderId === null) {
+      setError("먼저 왼쪽 자료 트리에서 폴더를 추가하세요.");
+      return;
+    }
     setSelectedMaterialId(null);
     setForm({
       ...emptyForm,
-      folderId: tree?.folders[0]?.id ?? null,
+      folderId: targetFolderId,
       originalText: sampleSentences.join("\n\n"),
     });
   };
 
+  const createFolder = async () => {
+    const name = newFolderName.trim();
+    if (!name) {
+      setError("새 폴더 이름을 입력하세요.");
+      return;
+    }
+    setCreatingFolder(true);
+    setError("");
+    try {
+      const folder = await createReadingFolder(apiUrl, token, {
+        name,
+        parentId: newFolderParentId === "" ? null : newFolderParentId,
+      });
+      const nextTree = await fetchReadingTree(apiUrl, token);
+      setTree(nextTree);
+      setNewFolderName("");
+      setNewFolderParentId("");
+      setActiveTreeId(`folder:${folder.id}`);
+      await reloadMaterials({ kind: "folder", folderId: folder.id });
+      setForm((prev) => ({ ...prev, folderId: folder.id }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "폴더 생성에 실패했습니다.");
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
   const saveMaterial = async () => {
+    if (form.folderId === null) {
+      setError("자료를 저장할 폴더를 먼저 선택하거나 추가하세요.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -436,6 +477,25 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
             <div className="material-list-head">
               <strong>자료 트리</strong>
               <span>{tree?.folders.length ?? 0}</span>
+            </div>
+            <div className="material-folder-create">
+              <input
+                value={newFolderName}
+                onChange={(event) => setNewFolderName(event.target.value)}
+                placeholder="새 폴더 이름"
+              />
+              <select
+                value={newFolderParentId}
+                onChange={(event) => setNewFolderParentId(event.target.value === "" ? "" : Number(event.target.value))}
+              >
+                <option value="">루트 폴더</option>
+                {(tree?.folders ?? []).map((folder) => (
+                  <option key={folder.id} value={folder.id}>{folder.name}</option>
+                ))}
+              </select>
+              <Button type="button" variant="outline" onClick={() => void createFolder()} disabled={creatingFolder}>
+                <Plus size={15} /> {creatingFolder ? "추가 중" : "폴더 추가"}
+              </Button>
             </div>
             <div className="material-tree-search">
               <Search size={15} />
@@ -510,7 +570,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
                   value={form.folderId ?? ""}
                   onChange={(event) => setForm((prev) => ({ ...prev, folderId: event.target.value ? Number(event.target.value) : null }))}
                 >
-                  <option value="">미분류</option>
+                  <option value="">폴더 선택 필요</option>
                   {(tree?.folders ?? []).map((folder) => (
                     <option key={folder.id} value={folder.id}>{folder.name}</option>
                   ))}

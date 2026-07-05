@@ -1852,6 +1852,34 @@ button:disabled {
   font-size: 13px;
 }
 
+.material-folder-create {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.material-folder-create input,
+.material-folder-create select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid #d7dce4;
+  border-radius: 7px;
+  color: #111827;
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
+}
+
+.material-folder-create button {
+  width: 100%;
+  justify-content: center;
+}
+
 .material-tree-sections {
   display: grid;
   gap: 14px;

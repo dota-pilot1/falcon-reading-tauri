@@ -41,6 +41,11 @@ export type ReadingMaterialUpsertRequest = {
   collectedDate: string;
 };
 
+export type ReadingFolderCreateRequest = {
+  parentId: number | null;
+  name: string;
+};
+
 export type ReadingTreeFilter =
   | { kind: "all" }
   | { kind: "folder"; folderId: number }

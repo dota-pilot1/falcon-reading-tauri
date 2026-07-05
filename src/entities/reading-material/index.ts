@@ -1,5 +1,6 @@
 export type {
   ReadingFolder,
+  ReadingFolderCreateRequest,
   ReadingLevel,
   ReadingMaterial,
   ReadingMaterialStatus,

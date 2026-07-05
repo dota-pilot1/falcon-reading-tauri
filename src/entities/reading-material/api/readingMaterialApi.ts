@@ -1,6 +1,7 @@
 import { apiFetch } from "../../../shared/api/client";
 import type {
   ReadingFolder,
+  ReadingFolderCreateRequest,
   ReadingMaterial,
   ReadingMaterialStatus,
   ReadingMaterialUpsertRequest,
@@ -87,4 +88,14 @@ export async function fetchReadingFolders(apiUrl: string, token: string) {
   });
   if (!response.ok) throw new Error(await parseError(response));
   return (await response.json()) as ReadingFolder[];
+}
+
+export async function createReadingFolder(apiUrl: string, token: string, body: ReadingFolderCreateRequest) {
+  const response = await apiFetch(`${apiUrl}/api/reading-folders`, {
+    method: "POST",
+    headers: jsonAuthHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await parseError(response));
+  return (await response.json()) as ReadingFolder;
 }
