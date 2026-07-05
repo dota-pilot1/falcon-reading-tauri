@@ -2,6 +2,7 @@ import { apiFetch } from "../../../shared/api/client";
 import type {
   ReadingFolder,
   ReadingFolderCreateRequest,
+  ReadingFolderReorderRequest,
   ReadingMaterial,
   ReadingMaterialStatus,
   ReadingMaterialUpsertRequest,
@@ -98,4 +99,14 @@ export async function createReadingFolder(apiUrl: string, token: string, body: R
   });
   if (!response.ok) throw new Error(await parseError(response));
   return (await response.json()) as ReadingFolder;
+}
+
+export async function reorderReadingFolders(apiUrl: string, token: string, body: ReadingFolderReorderRequest) {
+  const response = await apiFetch(`${apiUrl}/api/reading-folders/reorder`, {
+    method: "PUT",
+    headers: jsonAuthHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await parseError(response));
+  return (await response.json()) as ReadingFolder[];
 }

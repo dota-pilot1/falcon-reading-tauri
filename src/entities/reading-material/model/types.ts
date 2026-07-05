@@ -46,6 +46,11 @@ export type ReadingFolderCreateRequest = {
   name: string;
 };
 
+export type ReadingFolderReorderRequest = {
+  parentId: number | null;
+  orderedIds: number[];
+};
+
 export type ReadingTreeFilter =
   | { kind: "all" }
   | { kind: "folder"; folderId: number }
@@ -58,6 +63,7 @@ export type ReadingTreeNode = {
   label: string;
   count: number;
   depth?: number;
+  parentFolderId?: number | null;
   filter: ReadingTreeFilter;
 };
 

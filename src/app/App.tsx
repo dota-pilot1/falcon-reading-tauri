@@ -1,18 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import {
   BookOpenText,
-  CalendarDays,
   CheckCircle2,
-  ChevronDown,
   CircleAlert,
   Clock,
   FileText,
-  Folder,
-  FolderOpen,
   Link,
   Plus,
   Save,
-  Search,
   Sparkles,
   Zap,
 } from "lucide-react";
@@ -24,7 +19,9 @@ import { defaultApiUrl, unauthorizedEventName } from "../shared/api/client";
 import { AppSidebar } from "../widgets/app-shell/ui/AppSidebar";
 import { AppTopbar } from "../widgets/app-shell/ui/AppTopbar";
 import { Button } from "../shared/ui/Button";
+import { Select } from "../shared/ui/Select";
 import {
+  type ReadingLevel,
   sourceTypeLabels,
   statusLabels,
   type ReadingMaterial,
@@ -35,11 +32,13 @@ import {
   type ReadingTreeResponse,
   type ReadingTreeSection,
 } from "../entities/reading-material";
+import { ReadingMaterialTreePanel, type FolderContextState } from "../features/reading-materials/ui/ReadingMaterialTreePanel";
 import {
   createReadingFolder,
   createReadingMaterial,
   fetchReadingMaterials,
   fetchReadingTree,
+  reorderReadingFolders,
   updateReadingMaterial,
 } from "../entities/reading-material/api/readingMaterialApi";
 
@@ -67,6 +66,7 @@ function buildFolderNodes(tree: ReadingTreeResponse, parentId: number | null, de
           label: folder.name,
           count: folder.materialCount,
           depth,
+          parentFolderId: folder.parentId,
           filter,
         },
         ...buildFolderNodes(tree, folder.id, depth + 1),
@@ -115,6 +115,25 @@ function buildTreeSections(tree: ReadingTreeResponse, totalCount: number): Readi
       })),
     },
   ];
+}
+
+function visibleNodesForSection(section: ReadingTreeSection, collapsedFolders: Set<number>) {
+  if (section.id !== "library") return section.nodes;
+  const folderNodeById = new Map<number, ReadingTreeSection["nodes"][number]>();
+  for (const node of section.nodes) {
+    if (node.filter.kind === "folder") folderNodeById.set(node.filter.folderId, node);
+  }
+
+  const hasCollapsedAncestor = (node: ReadingTreeSection["nodes"][number]) => {
+    let parentId = node.parentFolderId;
+    while (parentId !== null && parentId !== undefined) {
+      if (collapsedFolders.has(parentId)) return true;
+      parentId = folderNodeById.get(parentId)?.parentFolderId;
+    }
+    return false;
+  };
+
+  return section.nodes.filter((node) => !hasCollapsedAncestor(node));
 }
 
 function formatSavedAt(value: string) {
@@ -334,18 +353,38 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const [tree, setTree] = useState<ReadingTreeResponse | null>(null);
   const [materials, setMaterials] = useState<ReadingMaterial[]>([]);
   const [activeTreeId, setActiveTreeId] = useState("all");
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(() => new Set());
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [form, setForm] = useState<ReadingMaterialUpsertRequest>(emptyForm);
   const [newFolderName, setNewFolderName] = useState("");
-  const [newFolderParentId, setNewFolderParentId] = useState<number | "">("");
+  const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
+  const [contextFolder, setContextFolder] = useState<FolderContextState | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const totalMaterialCount = tree?.sourceTypes.reduce((sum, item) => sum + item.count, 0) ?? materials.length;
   const treeSections = useMemo(() => (tree ? buildTreeSections(tree, totalMaterialCount) : []), [tree, totalMaterialCount]);
+  const visibleTreeSections = useMemo(
+    () => treeSections.map((section) => ({
+      ...section,
+      nodes: collapsedSections.has(section.id) ? [] : visibleNodesForSection(section, collapsedFolders),
+    })),
+    [collapsedFolders, collapsedSections, treeSections]
+  );
   const activeNode = treeSections.flatMap((section) => section.nodes).find((node) => node.id === activeTreeId) ?? treeSections[0]?.nodes[0];
   const activeFolderId = activeNode?.filter.kind === "folder" ? activeNode.filter.folderId : null;
   const selectedMaterial = materials.find((material) => material.id === selectedMaterialId) ?? materials[0] ?? null;
+  const folderOptions = useMemo(
+    () => [
+      { value: "", label: "폴더 선택 필요" },
+      ...(tree?.folders ?? []).map((folder) => ({
+        value: String(folder.id),
+        label: folder.name,
+      })),
+    ],
+    [tree?.folders]
+  );
 
   const reloadTree = async () => {
     const nextTree = await fetchReadingTree(apiUrl, token);
@@ -358,6 +397,12 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     setSelectedMaterialId(items[0]?.id ?? null);
     setForm(items[0] ? formFromMaterial(items[0]) : emptyForm);
   };
+
+  useEffect(() => {
+    const closeContextMenu = () => setContextFolder(null);
+    window.addEventListener("click", closeContextMenu);
+    return () => window.removeEventListener("click", closeContextMenu);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -385,9 +430,56 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     });
   };
 
+  const toggleSection = (sectionId: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  };
+
+  const toggleFolder = (folderId: number) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
+
+  const openRootContext = (x: number, y: number) => {
+    setContextFolder({
+      folderId: null,
+      parentId: null,
+      name: "루트 폴더",
+      x,
+      y,
+    });
+    setNewFolderName("");
+  };
+
+  const openFolderContext = (event: MouseEvent, node: ReadingTreeSection["nodes"][number]) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (node.filter.kind !== "folder") {
+      openRootContext(event.clientX, event.clientY);
+      return;
+    }
+    setContextFolder({
+      folderId: node.filter.folderId,
+      parentId: node.parentFolderId ?? null,
+      name: node.label,
+      x: event.clientX,
+      y: event.clientY,
+    });
+    setNewFolderName("");
+  };
+
   const selectMaterial = (material: ReadingMaterial) => {
     setSelectedMaterialId(material.id);
     setForm(formFromMaterial(material));
+    setMaterialDialogOpen(true);
   };
 
   const startNewMaterial = () => {
@@ -402,9 +494,10 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
       folderId: targetFolderId,
       originalText: sampleSentences.join("\n\n"),
     });
+    setMaterialDialogOpen(true);
   };
 
-  const createFolder = async () => {
+  const createFolder = async (parentIdOverride?: number | null) => {
     const name = newFolderName.trim();
     if (!name) {
       setError("새 폴더 이름을 입력하세요.");
@@ -413,14 +506,15 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     setCreatingFolder(true);
     setError("");
     try {
+      const contextParentId = contextFolder?.folderId ?? contextFolder?.parentId ?? null;
       const folder = await createReadingFolder(apiUrl, token, {
         name,
-        parentId: newFolderParentId === "" ? null : newFolderParentId,
+        parentId: parentIdOverride !== undefined ? parentIdOverride : contextParentId,
       });
       const nextTree = await fetchReadingTree(apiUrl, token);
       setTree(nextTree);
       setNewFolderName("");
-      setNewFolderParentId("");
+      setContextFolder(null);
       setActiveTreeId(`folder:${folder.id}`);
       await reloadMaterials({ kind: "folder", folderId: folder.id });
       setForm((prev) => ({ ...prev, folderId: folder.id }));
@@ -428,6 +522,31 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
       setError(err instanceof Error ? err.message : "폴더 생성에 실패했습니다.");
     } finally {
       setCreatingFolder(false);
+    }
+  };
+
+  const moveContextFolder = async (direction: -1 | 1) => {
+    if (!contextFolder?.folderId || !tree) return;
+    const target = tree.folders.find((folder) => folder.id === contextFolder.folderId);
+    if (!target) return;
+    const siblings = tree.folders
+      .filter((folder) => folder.parentId === target.parentId)
+      .sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
+    const currentIndex = siblings.findIndex((folder) => folder.id === target.id);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= siblings.length) return;
+    const reordered = [...siblings];
+    [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
+    setError("");
+    try {
+      await reorderReadingFolders(apiUrl, token, {
+        parentId: target.parentId,
+        orderedIds: reordered.map((folder) => folder.id),
+      });
+      await reloadTree();
+      setContextFolder(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "폴더 순서 변경에 실패했습니다.");
     }
   };
 
@@ -446,6 +565,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
       await reloadMaterials(activeNode?.filter ?? { kind: "all" });
       setSelectedMaterialId(saved.id);
       setForm(formFromMaterial(saved));
+      setMaterialDialogOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "독해 자료 저장에 실패했습니다.");
     } finally {
@@ -461,140 +581,47 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
             <h1>독해 자료</h1>
             <p>원문을 수집하고 출처, 난이도, 분석 결과를 함께 관리합니다.</p>
           </div>
-          <div className="material-actions">
-            <Button variant="outline" type="button" onClick={startNewMaterial}><Plus size={16} /> 새 자료</Button>
-            <Button variant="outline" type="button"><Search size={16} /> 검색</Button>
-            <Button type="button" onClick={() => void saveMaterial()} disabled={saving}>
-              <Save size={16} /> {saving ? "저장 중" : "저장"}
-            </Button>
-          </div>
         </header>
 
         {error ? <div className="material-error">{error}</div> : null}
 
         <div className="material-workbench">
-          <aside className="material-tree-panel">
-            <div className="material-list-head">
-              <strong>자료 트리</strong>
-              <span>{tree?.folders.length ?? 0}</span>
-            </div>
-            <div className="material-folder-create">
-              <input
-                value={newFolderName}
-                onChange={(event) => setNewFolderName(event.target.value)}
-                placeholder="새 폴더 이름"
-              />
-              <select
-                value={newFolderParentId}
-                onChange={(event) => setNewFolderParentId(event.target.value === "" ? "" : Number(event.target.value))}
-              >
-                <option value="">루트 폴더</option>
-                {(tree?.folders ?? []).map((folder) => (
-                  <option key={folder.id} value={folder.id}>{folder.name}</option>
-                ))}
-              </select>
-              <Button type="button" variant="outline" onClick={() => void createFolder()} disabled={creatingFolder}>
-                <Plus size={15} /> {creatingFolder ? "추가 중" : "폴더 추가"}
-              </Button>
-            </div>
-            <div className="material-tree-search">
-              <Search size={15} />
-              <span>폴더, 날짜, 상태 검색</span>
-            </div>
-            <div className="material-tree-sections">
-              {treeSections.map((section) => (
-                <TreeSection
-                  key={section.id}
-                  section={section}
-                  activeTreeId={activeTreeId}
-                  onSelect={selectTreeNode}
-                />
-              ))}
-            </div>
-          </aside>
-
-          <aside className="material-list-panel">
-            <div className="material-list-head">
-              <div>
-                <strong>{activeNode?.label ?? "전체 자료"}</strong>
-                <small>필터 결과</small>
-              </div>
-              <span>{materials.length}</span>
-            </div>
-            <div className="material-card-list">
-              {materials.length === 0 ? <div className="material-empty">이 필터에 해당하는 자료가 없습니다.</div> : null}
-              {materials.map((material) => (
-                <MaterialCard key={material.id} material={material} active={material.id === selectedMaterialId} onSelect={() => selectMaterial(material)} />
-              ))}
-            </div>
-          </aside>
+          <ReadingMaterialTreePanel
+            sections={visibleTreeSections}
+            activeTreeId={activeTreeId}
+            collapsedSections={collapsedSections}
+            collapsedFolders={collapsedFolders}
+            contextFolder={contextFolder}
+            newFolderName={newFolderName}
+            creatingFolder={creatingFolder}
+            onOpenRootContext={openRootContext}
+            onOpenFolderContext={openFolderContext}
+            onSelect={selectTreeNode}
+            onToggleSection={toggleSection}
+            onToggleFolder={toggleFolder}
+            onChangeNewFolderName={setNewFolderName}
+            onCreateFolder={() => void createFolder()}
+            onMoveFolder={(direction) => void moveContextFolder(direction)}
+          />
 
           <main className="material-editor-panel">
             <div className="editor-section-title">
               <div>
-                <span>{selectedMaterialId ? "Saved Material" : "New Material"}</span>
-                <h2>{selectedMaterialId ? "독해 자료 수정" : "새 독해 자료 등록"}</h2>
+                <span>Reading Materials</span>
+                <h2>{activeNode?.label ?? "전체 자료"}</h2>
               </div>
-              <strong>{statusLabels[form.status]}</strong>
+              <Button type="button" onClick={startNewMaterial}><Plus size={16} /> 자료 추가</Button>
             </div>
 
-            <div className="material-form-grid">
-              <label>
-                제목
-                <input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} />
-              </label>
-              <label>
-                자료 유형
-                <select value={form.sourceType} onChange={(event) => setForm((prev) => ({ ...prev, sourceType: event.target.value as ReadingSourceType }))}>
-                  <option value="OFFICIAL_DOCS">공식 문서</option>
-                  <option value="ARTICLE">기사</option>
-                  <option value="BOOK">원서</option>
-                  <option value="EXAM_PASSAGE">시험 지문</option>
-                </select>
-              </label>
-              <label>
-                난이도
-                <select value={form.level} onChange={(event) => setForm((prev) => ({ ...prev, level: event.target.value as ReadingMaterialUpsertRequest["level"] }))}>
-                  <option value="B1">B1</option>
-                  <option value="B2">B2</option>
-                  <option value="C1">C1</option>
-                </select>
-              </label>
-              <label>
-                저장 날짜
-                <input value={form.collectedDate} onChange={(event) => setForm((prev) => ({ ...prev, collectedDate: event.target.value }))} />
-              </label>
-              <label>
-                저장 폴더
-                <select
-                  value={form.folderId ?? ""}
-                  onChange={(event) => setForm((prev) => ({ ...prev, folderId: event.target.value ? Number(event.target.value) : null }))}
-                >
-                  <option value="">폴더 선택 필요</option>
-                  {(tree?.folders ?? []).map((folder) => (
-                    <option key={folder.id} value={folder.id}>{folder.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                상태
-                <select value={form.status} onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as ReadingMaterialStatus }))}>
-                  <option value="RAW">원문 저장</option>
-                  <option value="ANALYSIS_PENDING">분석 대기</option>
-                  <option value="READY">학습 가능</option>
-                </select>
-              </label>
-              <label className="wide">
-                출처 URL
-                <div className="url-input">
-                  <Link size={16} />
-                  <input value={form.sourceUrl} onChange={(event) => setForm((prev) => ({ ...prev, sourceUrl: event.target.value }))} />
-                </div>
-              </label>
-              <label className="wide">
-                원문
-                <textarea value={form.originalText} onChange={(event) => setForm((prev) => ({ ...prev, originalText: event.target.value }))} />
-              </label>
+            <div className="material-inline-list">
+              <div className="material-inline-head">
+                <strong>독해 자료</strong>
+                <span>{materials.length}</span>
+              </div>
+              {materials.length === 0 ? <div className="material-empty">선택한 트리에 저장된 자료가 없습니다.</div> : null}
+              {materials.map((material) => (
+                <MaterialCard key={material.id} material={material} active={material.id === selectedMaterialId} onSelect={() => selectMaterial(material)} />
+              ))}
             </div>
           </main>
 
@@ -627,39 +654,101 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
             </section>
           </aside>
         </div>
-      </div>
-    </section>
-  );
-}
-
-function TreeSection({
-  section,
-  activeTreeId,
-  onSelect,
-}: {
-  section: ReadingTreeSection;
-  activeTreeId: string;
-  onSelect: (nodeId: string, filter: ReadingTreeFilter) => void;
-}) {
-  return (
-    <section className="material-tree-section">
-      <div className="material-tree-section-title">
-        <ChevronDown size={15} />
-        <strong>{section.label}</strong>
-      </div>
-      <div className="material-tree-node-list">
-        {section.nodes.map((node) => (
-          <button
-            key={node.id}
-            className={`material-tree-node depth-${node.depth ?? 0} ${node.id === activeTreeId ? "active" : ""}`}
-            type="button"
-            onClick={() => onSelect(node.id, node.filter)}
+        {materialDialogOpen ? (
+          <div
+            className="material-dialog-backdrop fixed inset-0 z-[80] grid place-items-center bg-slate-950/30 p-8"
+            onClick={() => setMaterialDialogOpen(false)}
           >
-            {section.id === "dates" ? <CalendarDays size={15} /> : node.id === activeTreeId ? <FolderOpen size={15} /> : <Folder size={15} />}
-            <span>{node.label}</span>
-            <em>{node.count}</em>
-          </button>
-        ))}
+            <div
+              className="material-dialog grid max-h-[calc(100vh-96px)] w-[min(920px,calc(100vw-96px))] overflow-auto rounded-[10px] border border-zinc-200 bg-white p-[18px] shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="editor-section-title">
+                <div>
+                  <span>{selectedMaterialId ? "Saved Material" : "New Material"}</span>
+                  <h2>{selectedMaterialId ? "독해 자료 수정" : "새 독해 자료 등록"}</h2>
+                </div>
+                <strong>{statusLabels[form.status]}</strong>
+              </div>
+              <div className="material-form-grid">
+                <label>
+                  제목
+                  <input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} />
+                </label>
+                <div className="material-field">
+                  자료 유형
+                  <Select
+                    ariaLabel="자료 유형"
+                    value={form.sourceType}
+                    options={[
+                      { value: "OFFICIAL_DOCS", label: "공식 문서" },
+                      { value: "ARTICLE", label: "기사" },
+                      { value: "BOOK", label: "원서" },
+                      { value: "EXAM_PASSAGE", label: "시험 지문" },
+                    ]}
+                    onChange={(sourceType) => setForm((prev) => ({ ...prev, sourceType }))}
+                  />
+                </div>
+                <div className="material-field">
+                  난이도
+                  <Select
+                    ariaLabel="난이도"
+                    value={form.level}
+                    options={[
+                      { value: "B1", label: "B1" },
+                      { value: "B2", label: "B2" },
+                      { value: "C1", label: "C1" },
+                    ]}
+                    onChange={(level) => setForm((prev) => ({ ...prev, level: level as ReadingLevel }))}
+                  />
+                </div>
+                <label>
+                  저장 날짜
+                  <input value={form.collectedDate} onChange={(event) => setForm((prev) => ({ ...prev, collectedDate: event.target.value }))} />
+                </label>
+                <div className="material-field">
+                  저장 폴더
+                  <Select
+                    ariaLabel="저장 폴더"
+                    value={form.folderId === null ? "" : String(form.folderId)}
+                    options={folderOptions}
+                    onChange={(folderId) => setForm((prev) => ({ ...prev, folderId: folderId ? Number(folderId) : null }))}
+                  />
+                </div>
+                <div className="material-field">
+                  상태
+                  <Select
+                    ariaLabel="상태"
+                    value={form.status}
+                    options={[
+                      { value: "RAW", label: "원문 저장" },
+                      { value: "ANALYSIS_PENDING", label: "분석 대기" },
+                      { value: "READY", label: "학습 가능" },
+                    ]}
+                    onChange={(status) => setForm((prev) => ({ ...prev, status }))}
+                  />
+                </div>
+                <label className="wide">
+                  출처 URL
+                  <div className="url-input">
+                    <Link size={16} />
+                    <input value={form.sourceUrl} onChange={(event) => setForm((prev) => ({ ...prev, sourceUrl: event.target.value }))} />
+                  </div>
+                </label>
+                <label className="wide">
+                  원문
+                  <textarea value={form.originalText} onChange={(event) => setForm((prev) => ({ ...prev, originalText: event.target.value }))} />
+                </label>
+              </div>
+              <div className="material-dialog-actions">
+                <Button variant="outline" type="button" onClick={() => setMaterialDialogOpen(false)}>닫기</Button>
+                <Button type="button" onClick={() => void saveMaterial()} disabled={saving}>
+                  <Save size={16} /> {saving ? "저장 중" : "저장"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );
