@@ -28,7 +28,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlDOUNFQ0MwNjlDNENBMTYKUldRV3lzUnB3T3ljbkRoUENXeDJGYkwxeDAreUxLMk94cTZpVGI0TDVMQ1JZdzNwSVF6SGVSLzcK",
       "endpoints": [
-        "https://github.com/dota-pilot1/rocket-banchan-container/releases/latest/download/latest.json"
+        "https://github.com/dota-pilot1/falcon-english-tauri/releases/latest/download/latest.json"
       ]
     }
   },
