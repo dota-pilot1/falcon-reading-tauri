@@ -74,15 +74,12 @@ function buildFolderNodes(tree: ReadingTreeResponse, parentId: number | null, de
     });
 }
 
-function buildTreeSections(tree: ReadingTreeResponse, totalCount: number): ReadingTreeSection[] {
+function buildTreeSections(tree: ReadingTreeResponse): ReadingTreeSection[] {
   return [
     {
       id: "library",
       label: "내 폴더",
-      nodes: [
-        { id: "all", label: "전체 자료", count: totalCount, filter: { kind: "all" } },
-        ...buildFolderNodes(tree, null),
-      ],
+      nodes: buildFolderNodes(tree, null),
     },
     {
       id: "dates",
@@ -363,8 +360,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const totalMaterialCount = tree?.sourceTypes.reduce((sum, item) => sum + item.count, 0) ?? materials.length;
-  const treeSections = useMemo(() => (tree ? buildTreeSections(tree, totalMaterialCount) : []), [tree, totalMaterialCount]);
+  const treeSections = useMemo(() => (tree ? buildTreeSections(tree) : []), [tree]);
   const visibleTreeSections = useMemo(
     () => treeSections.map((section) => ({
       ...section,
@@ -372,7 +368,9 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     })),
     [collapsedFolders, collapsedSections, treeSections]
   );
-  const activeNode = treeSections.flatMap((section) => section.nodes).find((node) => node.id === activeTreeId) ?? treeSections[0]?.nodes[0];
+  const activeNode = treeSections.flatMap((section) => section.nodes).find((node) => node.id === activeTreeId);
+  const activeFilter = activeNode?.filter ?? { kind: "all" as const };
+  const activeTreeLabel = activeNode?.label ?? "전체 자료";
   const activeFolderId = activeNode?.filter.kind === "folder" ? activeNode.filter.folderId : null;
   const selectedMaterial = materials.find((material) => material.id === selectedMaterialId) ?? materials[0] ?? null;
   const folderOptions = useMemo(
@@ -391,7 +389,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     setTree(nextTree);
   };
 
-  const reloadMaterials = async (filter: ReadingTreeFilter = activeNode?.filter ?? { kind: "all" }) => {
+  const reloadMaterials = async (filter: ReadingTreeFilter = activeFilter) => {
     const items = await fetchReadingMaterials(apiUrl, token, paramsFromFilter(filter));
     setMaterials(items);
     setSelectedMaterialId(items[0]?.id ?? null);
@@ -562,7 +560,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
         ? await updateReadingMaterial(apiUrl, token, selectedMaterialId, form)
         : await createReadingMaterial(apiUrl, token, form);
       await reloadTree();
-      await reloadMaterials(activeNode?.filter ?? { kind: "all" });
+      await reloadMaterials(activeFilter);
       setSelectedMaterialId(saved.id);
       setForm(formFromMaterial(saved));
       setMaterialDialogOpen(false);
@@ -608,7 +606,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
             <div className="editor-section-title">
               <div>
                 <span>Reading Materials</span>
-                <h2>{activeNode?.label ?? "전체 자료"}</h2>
+                <h2>{activeTreeLabel}</h2>
               </div>
               <Button type="button" onClick={startNewMaterial}><Plus size={16} /> 자료 추가</Button>
             </div>
