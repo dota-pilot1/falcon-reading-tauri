@@ -1986,6 +1986,27 @@ button:disabled {
   margin-top: 14px;
 }
 
+.material-empty,
+.material-error {
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.material-empty {
+  border: 1px dashed #d1d5db;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.material-error {
+  margin-top: 16px;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
 .material-card.active {
   border-color: #111827;
   background: #18181b;
