@@ -1787,7 +1787,7 @@ button:disabled {
 
 .material-workbench {
   display: grid;
-  grid-template-columns: 300px minmax(520px, 1fr) 300px;
+  grid-template-columns: 280px minmax(520px, 1fr) 300px;
   gap: 16px;
   align-items: start;
   padding-top: 24px;
@@ -1797,12 +1797,12 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .material-list-head > div {
   display: grid;
-  gap: 3px;
+  gap: 2px;
 }
 
 .material-list-head h2,
@@ -1841,16 +1841,17 @@ button:disabled {
 .material-list-head > .button,
 .material-list-head button {
   justify-self: end;
-  min-height: 34px;
+  min-height: 32px;
+  padding-inline: 10px;
 }
 
 .material-tree-search {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  margin-top: 14px;
-  padding: 0 10px;
+  min-height: 34px;
+  margin-top: 12px;
+  padding: 0 9px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   color: #94a3b8;
@@ -1888,13 +1889,13 @@ button:disabled {
 
 .material-tree-sections {
   display: grid;
-  gap: 14px;
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .material-tree-section {
   display: grid;
-  gap: 7px;
+  gap: 4px;
 }
 
 .material-tree-section-title {
@@ -1902,8 +1903,8 @@ button:disabled {
   align-items: center;
   gap: 6px;
   width: 100%;
-  min-height: 30px;
-  padding: 0 4px;
+  min-height: 26px;
+  padding: 0 2px;
   border: 0;
   color: #64748b;
   background: transparent;
@@ -1930,10 +1931,10 @@ button:disabled {
 .material-tree-node-wrap {
   position: relative;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
   gap: 2px;
-  min-height: 34px;
+  min-height: 30px;
 }
 
 .material-tree-node {
@@ -1941,8 +1942,8 @@ button:disabled {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 34px;
-  padding: 0 8px;
+  min-height: 30px;
+  padding: 0 7px;
   border: 1px solid transparent;
   border-radius: 7px;
   color: #475569;
@@ -1954,8 +1955,8 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 34px;
+  width: 20px;
+  height: 30px;
   border: 1px solid transparent;
   border-radius: 6px;
   color: #64748b;
@@ -1972,11 +1973,11 @@ button:disabled {
 }
 
 .material-tree-node.depth-1 {
-  padding-left: 14px;
+  padding-left: 12px;
 }
 
 .material-tree-node.depth-2 {
-  padding-left: 24px;
+  padding-left: 20px;
 }
 
 .material-tree-node:hover {
@@ -2005,7 +2006,7 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -2014,9 +2015,9 @@ button:disabled {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 7px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
   border-radius: 999px;
   color: #64748b;
   background: #ffffff;
@@ -2157,18 +2158,6 @@ button:disabled {
   border-color: #e5e7eb;
   color: #334155;
   background: #f8fafc;
-}
-
-.material-tree-dropzone {
-  margin-top: 10px;
-  padding: 10px 8px;
-  border: 1px dashed #e2e8f0;
-  border-radius: 8px;
-  color: #94a3b8;
-  background: #f8fafc;
-  font-size: 12px;
-  font-weight: 750;
-  text-align: center;
 }
 
 .material-empty,

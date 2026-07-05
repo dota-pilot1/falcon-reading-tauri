@@ -51,12 +51,12 @@ export function ReadingMaterialTreePanel({
       <div className="material-list-head">
         <div>
           <strong>자료 트리</strong>
-          <small>우클릭으로 하위 폴더 추가</small>
         </div>
         <Button
           type="button"
           variant="outline"
           onClick={(event) => {
+            event.stopPropagation();
             const rect = event.currentTarget.getBoundingClientRect();
             onOpenRootContext(rect.left, rect.bottom + 6);
           }}
@@ -84,16 +84,6 @@ export function ReadingMaterialTreePanel({
             onOpenContext={onOpenFolderContext}
           />
         ))}
-      </div>
-
-      <div
-        className="material-tree-dropzone"
-        onContextMenu={(event) => {
-          event.preventDefault();
-          onOpenRootContext(event.clientX, event.clientY);
-        }}
-      >
-        빈 곳 우클릭으로 루트 폴더 추가
       </div>
 
       {contextFolder ? (
