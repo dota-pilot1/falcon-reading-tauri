@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BookOpenText,
+  CalendarDays,
   CheckCircle2,
+  ChevronDown,
   CircleAlert,
   Clock,
   FileText,
+  Folder,
+  FolderOpen,
   Link,
   Plus,
   Save,
@@ -20,58 +24,19 @@ import { defaultApiUrl, unauthorizedEventName } from "../shared/api/client";
 import { AppSidebar } from "../widgets/app-shell/ui/AppSidebar";
 import { AppTopbar } from "../widgets/app-shell/ui/AppTopbar";
 import { Button } from "../shared/ui/Button";
+import {
+  readingFolders,
+  readingMaterials,
+  type ReadingMaterial,
+  type ReadingTreeFilter,
+  type ReadingTreeSection,
+} from "../entities/reading-material";
 
 const appVersion = "0.1.15";
 
 type ConnectionStatus = "checking" | "online" | "offline";
 
-type ReadingMaterial = {
-  id: number;
-  title: string;
-  sourceType: "공식 문서" | "기사" | "원서" | "시험 지문";
-  level: "B1" | "B2" | "C1";
-  status: "원문 저장" | "분석 대기" | "학습 가능";
-  sourceUrl: string;
-  savedAt: string;
-  wordCount: number;
-  estimatedMinutes: number;
-};
-
-const materials: ReadingMaterial[] = [
-  {
-    id: 1,
-    title: "Why docs use should",
-    sourceType: "공식 문서",
-    level: "B2",
-    status: "학습 가능",
-    sourceUrl: "https://example.com/docs/should",
-    savedAt: "오늘 오전 12:08",
-    wordCount: 420,
-    estimatedMinutes: 8,
-  },
-  {
-    id: 2,
-    title: "How readers infer intent",
-    sourceType: "기사",
-    level: "B1",
-    status: "분석 대기",
-    sourceUrl: "https://example.com/articles/intent",
-    savedAt: "어제 오후 11:42",
-    wordCount: 680,
-    estimatedMinutes: 12,
-  },
-  {
-    id: 3,
-    title: "API warnings and notes",
-    sourceType: "공식 문서",
-    level: "C1",
-    status: "원문 저장",
-    sourceUrl: "https://example.com/api/warnings",
-    savedAt: "어제 오후 10:13",
-    wordCount: 350,
-    estimatedMinutes: 7,
-  },
-];
+const materials = readingMaterials;
 
 const sampleSentences = [
   "The fastest learners do not translate every word; they track the writer's purpose.",
@@ -80,6 +45,90 @@ const sampleSentences = [
 ];
 
 const sampleWords = ["track", "signal", "recommendation", "crutch", "rather than"];
+
+const sourceTypes = ["공식 문서", "기사", "원서", "시험 지문"] as const;
+const materialStatuses = ["원문 저장", "분석 대기", "학습 가능"] as const;
+
+function countByFilter(filter: ReadingTreeFilter) {
+  return materials.filter((material) => matchesTreeFilter(material, filter)).length;
+}
+
+function getFolderAndDescendantIds(folderId: string): string[] {
+  const childIds = readingFolders.filter((folder) => folder.parentId === folderId).map((folder) => folder.id);
+  return [folderId, ...childIds.flatMap((childId) => getFolderAndDescendantIds(childId))];
+}
+
+function matchesTreeFilter(material: ReadingMaterial, filter: ReadingTreeFilter) {
+  if (filter.kind === "all") return true;
+  if (filter.kind === "folder") return getFolderAndDescendantIds(filter.folderId).includes(material.folderId);
+  if (filter.kind === "date") return material.collectedDate === filter.date;
+  if (filter.kind === "status") return material.status === filter.status;
+  return material.sourceType === filter.sourceType;
+}
+
+function buildFolderNodes(parentId: string | null, depth = 0): ReadingTreeSection["nodes"] {
+  return readingFolders
+    .filter((folder) => folder.parentId === parentId)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .flatMap((folder) => {
+      const filter: ReadingTreeFilter = { kind: "folder", folderId: folder.id };
+      return [
+        {
+          id: `folder:${folder.id}`,
+          label: folder.name,
+          count: countByFilter(filter),
+          depth,
+          filter,
+        },
+        ...buildFolderNodes(folder.id, depth + 1),
+      ];
+    });
+}
+
+function buildTreeSections(): ReadingTreeSection[] {
+  const dates = Array.from(new Set(materials.map((material) => material.collectedDate))).sort((a, b) => b.localeCompare(a));
+
+  return [
+    {
+      id: "library",
+      label: "내 폴더",
+      nodes: [
+        { id: "all", label: "전체 자료", count: materials.length, filter: { kind: "all" } },
+        ...buildFolderNodes(null),
+      ],
+    },
+    {
+      id: "dates",
+      label: "날짜별",
+      nodes: dates.map((date) => ({
+        id: `date:${date}`,
+        label: date,
+        count: countByFilter({ kind: "date", date }),
+        filter: { kind: "date", date },
+      })),
+    },
+    {
+      id: "types",
+      label: "유형별",
+      nodes: sourceTypes.map((sourceType) => ({
+        id: `source:${sourceType}`,
+        label: sourceType,
+        count: countByFilter({ kind: "sourceType", sourceType }),
+        filter: { kind: "sourceType", sourceType },
+      })),
+    },
+    {
+      id: "status",
+      label: "상태별",
+      nodes: materialStatuses.map((status) => ({
+        id: `status:${status}`,
+        label: status,
+        count: countByFilter({ kind: "status", status }),
+        filter: { kind: "status", status },
+      })),
+    },
+  ];
+}
 
 export function App() {
   const apiUrl = defaultApiUrl;
@@ -232,6 +281,12 @@ function HomeView({ userName }: { userName: string }) {
 }
 
 function ReadingMaterialsView() {
+  const treeSections = useMemo(() => buildTreeSections(), []);
+  const [activeTreeId, setActiveTreeId] = useState("all");
+  const activeNode = treeSections.flatMap((section) => section.nodes).find((node) => node.id === activeTreeId) ?? treeSections[0].nodes[0];
+  const filteredMaterials = materials.filter((material) => matchesTreeFilter(material, activeNode.filter));
+  const selectedMaterial = filteredMaterials[0] ?? materials[0];
+
   return (
     <section className="falcon-view">
       <div className="falcon-inner">
@@ -247,19 +302,38 @@ function ReadingMaterialsView() {
         </header>
 
         <div className="material-workbench">
-          <aside className="material-list-panel">
+          <aside className="material-tree-panel">
             <div className="material-list-head">
-              <strong>보관함</strong>
+              <strong>자료 트리</strong>
               <span>{materials.length}</span>
             </div>
-            <div className="material-filter-row">
-              <button className="active" type="button">전체</button>
-              <button type="button">공식 문서</button>
-              <button type="button">기사</button>
+            <div className="material-tree-search">
+              <Search size={15} />
+              <span>폴더, 날짜, 상태 검색</span>
+            </div>
+            <div className="material-tree-sections">
+              {treeSections.map((section) => (
+                <TreeSection
+                  key={section.id}
+                  section={section}
+                  activeTreeId={activeTreeId}
+                  onSelect={setActiveTreeId}
+                />
+              ))}
+            </div>
+          </aside>
+
+          <aside className="material-list-panel">
+            <div className="material-list-head">
+              <div>
+                <strong>{activeNode.label}</strong>
+                <small>필터 결과</small>
+              </div>
+              <span>{filteredMaterials.length}</span>
             </div>
             <div className="material-card-list">
-              {materials.map((material) => (
-                <MaterialCard key={material.id} material={material} />
+              {filteredMaterials.map((material) => (
+                <MaterialCard key={material.id} material={material} active={material.id === selectedMaterial.id} />
               ))}
             </div>
           </aside>
@@ -276,30 +350,42 @@ function ReadingMaterialsView() {
             <div className="material-form-grid">
               <label>
                 제목
-                <input defaultValue="Why docs use should" />
+                <input defaultValue={selectedMaterial.title} />
               </label>
               <label>
                 자료 유형
-                <select defaultValue="official">
-                  <option value="official">공식 문서</option>
-                  <option value="article">기사</option>
-                  <option value="book">원서</option>
-                  <option value="exam">시험 지문</option>
+                <select defaultValue={selectedMaterial.sourceType}>
+                  <option value="공식 문서">공식 문서</option>
+                  <option value="기사">기사</option>
+                  <option value="원서">원서</option>
+                  <option value="시험 지문">시험 지문</option>
                 </select>
               </label>
               <label>
                 난이도
-                <select defaultValue="b2">
-                  <option value="b1">B1</option>
-                  <option value="b2">B2</option>
-                  <option value="c1">C1</option>
+                <select defaultValue={selectedMaterial.level}>
+                  <option value="B1">B1</option>
+                  <option value="B2">B2</option>
+                  <option value="C1">C1</option>
+                </select>
+              </label>
+              <label>
+                저장 날짜
+                <input defaultValue={selectedMaterial.collectedDate} />
+              </label>
+              <label>
+                저장 폴더
+                <select defaultValue={selectedMaterial.folderId}>
+                  {readingFolders.map((folder) => (
+                    <option key={folder.id} value={folder.id}>{folder.name}</option>
+                  ))}
                 </select>
               </label>
               <label className="wide">
                 출처 URL
                 <div className="url-input">
                   <Link size={16} />
-                  <input defaultValue="https://example.com/docs/should" />
+                  <input defaultValue={selectedMaterial.sourceUrl} />
                 </div>
               </label>
               <label className="wide">
@@ -343,6 +429,39 @@ function ReadingMaterialsView() {
   );
 }
 
+function TreeSection({
+  section,
+  activeTreeId,
+  onSelect,
+}: {
+  section: ReadingTreeSection;
+  activeTreeId: string;
+  onSelect: (nodeId: string) => void;
+}) {
+  return (
+    <section className="material-tree-section">
+      <div className="material-tree-section-title">
+        <ChevronDown size={15} />
+        <strong>{section.label}</strong>
+      </div>
+      <div className="material-tree-node-list">
+        {section.nodes.map((node) => (
+          <button
+            key={node.id}
+            className={`material-tree-node depth-${node.depth ?? 0} ${node.id === activeTreeId ? "active" : ""}`}
+            type="button"
+            onClick={() => onSelect(node.id)}
+          >
+            {section.id === "dates" ? <CalendarDays size={15} /> : node.id === activeTreeId ? <FolderOpen size={15} /> : <Folder size={15} />}
+            <span>{node.label}</span>
+            <em>{node.count}</em>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function MaterialRow({ material }: { material: ReadingMaterial }) {
   return (
     <article className="material-row">
@@ -355,9 +474,9 @@ function MaterialRow({ material }: { material: ReadingMaterial }) {
   );
 }
 
-function MaterialCard({ material }: { material: ReadingMaterial }) {
+function MaterialCard({ material, active }: { material: ReadingMaterial; active: boolean }) {
   return (
-    <button className={`material-card ${material.id === 1 ? "active" : ""}`} type="button">
+    <button className={`material-card ${active ? "active" : ""}`} type="button">
       <strong>{material.title}</strong>
       <span>{material.sourceType} · {material.level}</span>
       <small>{material.wordCount} words · {material.estimatedMinutes}분</small>

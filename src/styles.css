@@ -1674,16 +1674,18 @@ button:disabled {
 
 .material-home-main,
 .material-home-side,
+.material-tree-panel,
 .material-list-panel,
 .material-editor-panel,
 .analysis-preview-panel {
-  border: 1px solid #e0e2e6;
-  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
   background: #ffffff;
 }
 
 .material-home-main,
 .material-home-side,
+.material-tree-panel,
 .material-list-panel,
 .material-editor-panel,
 .analysis-preview-panel {
@@ -1785,7 +1787,7 @@ button:disabled {
 
 .material-workbench {
   display: grid;
-  grid-template-columns: 260px minmax(420px, 1fr) 300px;
+  grid-template-columns: 260px 280px minmax(420px, 1fr) 300px;
   gap: 16px;
   align-items: start;
   padding-top: 24px;
@@ -1796,6 +1798,11 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.material-list-head > div {
+  display: grid;
+  gap: 3px;
 }
 
 .material-list-head h2,
@@ -1809,12 +1816,135 @@ button:disabled {
 }
 
 .material-list-head span,
+.material-list-head small,
 .editor-section-title p,
 .analysis-preview-panel > p {
   margin: 4px 0 0;
   color: #71717a;
   font-size: 13px;
   line-height: 20px;
+}
+
+.material-list-head > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: #475569;
+  background: #f1f5f9;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.material-tree-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  margin-top: 14px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #94a3b8;
+  background: #f8fafc;
+  font-size: 13px;
+}
+
+.material-tree-sections {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.material-tree-section {
+  display: grid;
+  gap: 7px;
+}
+
+.material-tree-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.material-tree-node-list {
+  display: grid;
+  gap: 3px;
+}
+
+.material-tree-node {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #475569;
+  background: transparent;
+  text-align: left;
+}
+
+.material-tree-node.depth-1 {
+  padding-left: 24px;
+}
+
+.material-tree-node.depth-2 {
+  padding-left: 40px;
+}
+
+.material-tree-node:hover {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+}
+
+.material-tree-node.active {
+  border-color: #d1d5db;
+  color: #111827;
+  background: #f3f4f6;
+}
+
+.material-tree-node svg {
+  color: #64748b;
+}
+
+.material-tree-node.active svg {
+  color: #047857;
+}
+
+.material-tree-node span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.material-tree-node em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: #64748b;
+  background: #ffffff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.material-tree-node.active em {
+  color: #111827;
+  background: #ffffff;
 }
 
 .material-filter-row {
@@ -1846,10 +1976,14 @@ button:disabled {
   width: 100%;
   min-height: 92px;
   padding: 12px;
-  border: 1px solid #e6e8ec;
-  border-radius: 9px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
   background: #ffffff;
   text-align: left;
+}
+
+.material-card-list {
+  margin-top: 14px;
 }
 
 .material-card.active {
