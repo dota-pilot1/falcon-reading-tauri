@@ -1,17 +1,13 @@
 import {
-  BarChart3,
   BookOpenText,
-  Headphones,
   Home,
-  RotateCcw,
   Settings,
   UserCircle,
-  WholeWord,
   type LucideIcon,
 } from "lucide-react";
 import type { UserSummary } from "../../entities/user/model/types";
 
-export type WebMenuId = "today" | "reading" | "listening" | "vocabulary" | "review" | "records" | "profile" | "settings";
+export type WebMenuId = "home" | "readingMaterials" | "profile" | "settings";
 
 export type WebMenu = {
   id: WebMenuId;
@@ -23,40 +19,16 @@ export type WebMenu = {
 
 export const WEB_HEADER_MENUS: WebMenu[] = [
   {
-    id: "today",
-    label: "오늘 학습",
-    subtitle: "독해 1개 · 듣기 1개 · 복습",
+    id: "home",
+    label: "홈",
+    subtitle: "자료 현황 · 최근 저장 · 작업 대기",
     icon: Home,
   },
   {
-    id: "reading",
-    label: "독해",
-    subtitle: "문장 해석 · 구조 파악 · 이해 문제",
+    id: "readingMaterials",
+    label: "독해 자료",
+    subtitle: "원문 저장 · 분석 준비 · 학습 자료화",
     icon: BookOpenText,
-  },
-  {
-    id: "listening",
-    label: "듣기",
-    subtitle: "오디오 · 스크립트 · 받아쓰기",
-    icon: Headphones,
-  },
-  {
-    id: "vocabulary",
-    label: "단어장",
-    subtitle: "저장 단어 · 예문 · 반복 복습",
-    icon: WholeWord,
-  },
-  {
-    id: "review",
-    label: "복습",
-    subtitle: "놓친 문장 · 오답 · 받아쓰기",
-    icon: RotateCcw,
-  },
-  {
-    id: "records",
-    label: "기록",
-    subtitle: "연속 학습 · 정답률 · 듣기 반복",
-    icon: BarChart3,
   },
   {
     id: "settings",

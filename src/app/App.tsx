@@ -4,14 +4,12 @@ import {
   CheckCircle2,
   CircleAlert,
   Clock,
-  Headphones,
-  ListChecks,
-  Mic2,
-  PlayCircle,
-  RefreshCw,
+  FileText,
+  Link,
+  Plus,
+  Save,
   Search,
-  Target,
-  Volume2,
+  Sparkles,
   Zap,
 } from "lucide-react";
 import { WEB_HEADER_MENUS, PROFILE_MENU, canAccessMenu, type WebMenu, type WebMenuId } from "./model/navigation";
@@ -27,35 +25,66 @@ const appVersion = "0.1.15";
 
 type ConnectionStatus = "checking" | "online" | "offline";
 
-const dailySentences = [
+type ReadingMaterial = {
+  id: number;
+  title: string;
+  sourceType: "공식 문서" | "기사" | "원서" | "시험 지문";
+  level: "B1" | "B2" | "C1";
+  status: "원문 저장" | "분석 대기" | "학습 가능";
+  sourceUrl: string;
+  savedAt: string;
+  wordCount: number;
+  estimatedMinutes: number;
+};
+
+const materials: ReadingMaterial[] = [
   {
-    text: "The fastest learners do not translate every word; they track the writer's purpose.",
-    ko: "가장 빠르게 배우는 사람은 모든 단어를 번역하지 않고, 글쓴이의 목적을 따라갑니다.",
-    focus: "세미콜론 뒤 문장이 앞 문장을 보충합니다.",
+    id: 1,
+    title: "Why docs use should",
+    sourceType: "공식 문서",
+    level: "B2",
+    status: "학습 가능",
+    sourceUrl: "https://example.com/docs/should",
+    savedAt: "오늘 오전 12:08",
+    wordCount: 420,
+    estimatedMinutes: 8,
   },
   {
-    text: "When a document says should, it usually signals a recommendation rather than a hard rule.",
-    ko: "문서에서 should는 보통 강제 규칙이 아니라 권장 사항을 뜻합니다.",
-    focus: "rather than은 대비되는 개념을 정리합니다.",
+    id: 2,
+    title: "How readers infer intent",
+    sourceType: "기사",
+    level: "B1",
+    status: "분석 대기",
+    sourceUrl: "https://example.com/articles/intent",
+    savedAt: "어제 오후 11:42",
+    wordCount: 680,
+    estimatedMinutes: 12,
   },
   {
-    text: "Listening improves when the script becomes a tool for checking, not a crutch for guessing.",
-    ko: "스크립트를 추측용 보조물이 아니라 확인 도구로 쓸 때 듣기가 향상됩니다.",
-    focus: "not A but B 구조로 학습 태도를 대비합니다.",
+    id: 3,
+    title: "API warnings and notes",
+    sourceType: "공식 문서",
+    level: "C1",
+    status: "원문 저장",
+    sourceUrl: "https://example.com/api/warnings",
+    savedAt: "어제 오후 10:13",
+    wordCount: 350,
+    estimatedMinutes: 7,
   },
 ];
 
-const savedWords = [
-  { word: "track", meaning: "따라가다, 추적하다", source: "독해" },
-  { word: "signal", meaning: "나타내다, 신호를 주다", source: "독해" },
-  { word: "crutch", meaning: "의지하는 보조 수단", source: "듣기" },
-  { word: "recommendation", meaning: "권장 사항", source: "문서 영어" },
+const sampleSentences = [
+  "The fastest learners do not translate every word; they track the writer's purpose.",
+  "When a document says should, it usually signals a recommendation rather than a hard rule.",
+  "Listening improves when the script becomes a tool for checking, not a crutch for guessing.",
 ];
+
+const sampleWords = ["track", "signal", "recommendation", "crutch", "rather than"];
 
 export function App() {
   const apiUrl = defaultApiUrl;
   const { token, user, setToken, setRefreshToken, setUser } = useAuthSession();
-  const [activeMenu, setActiveMenu] = useState<WebMenuId>("today");
+  const [activeMenu, setActiveMenu] = useState<WebMenuId>("home");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("checking");
   const isLoggedIn = token.trim().length > 0 && user !== null;
   const activeWebMenu = useMemo(
@@ -69,7 +98,7 @@ export function App() {
       setToken("");
       setRefreshToken("");
       setUser(null);
-      setActiveMenu("today");
+      setActiveMenu("home");
     };
     window.addEventListener(unauthorizedEventName, clearExpiredSession);
     return () => window.removeEventListener(unauthorizedEventName, clearExpiredSession);
@@ -95,7 +124,7 @@ export function App() {
     setToken(data.accessToken);
     setRefreshToken(data.refreshToken);
     setUser(data.user);
-    setActiveMenu("today");
+    setActiveMenu("home");
   };
 
   const handleSignup = async (email: string, username: string, password: string) => {
@@ -107,7 +136,7 @@ export function App() {
     setToken("");
     setRefreshToken("");
     setUser(null);
-    setActiveMenu("today");
+    setActiveMenu("home");
   };
 
   const openMenu = (menu: WebMenuId) => {
@@ -141,109 +170,60 @@ export function App() {
 }
 
 function FalconWorkspace({ activeMenu, userName }: { activeMenu: WebMenuId; userName: string }) {
-  if (activeMenu === "today") return <TodayLearningView userName={userName} />;
-  if (activeMenu === "reading") return <ReadingView />;
-  if (activeMenu === "listening") return <ListeningView />;
-  if (activeMenu === "vocabulary") return <VocabularyView />;
-  if (activeMenu === "review") return <ReviewView />;
-  if (activeMenu === "records") return <RecordsView />;
+  if (activeMenu === "home") return <HomeView userName={userName} />;
+  if (activeMenu === "readingMaterials") return <ReadingMaterialsView />;
   if (activeMenu === "profile") return <ProfileView userName={userName} />;
   if (activeMenu === "settings") return <SettingsView />;
-  return <TodayLearningView userName={userName} />;
+  return <HomeView userName={userName} />;
 }
 
-function TodayLearningView({ userName }: { userName: string }) {
+function HomeView({ userName }: { userName: string }) {
+  const readyCount = materials.filter((item) => item.status === "학습 가능").length;
+  const pendingCount = materials.filter((item) => item.status !== "학습 가능").length;
+
   return (
     <section className="falcon-view">
       <div className="falcon-inner">
         <header className="falcon-hero">
           <div>
             <span className="falcon-kicker"><Zap size={15} /> Falcon English</span>
-            <h1>오늘 잡을 영어 입력 루틴</h1>
-            <p>{userName}님의 독해와 듣기를 한 세션 안에서 연결합니다.</p>
+            <h1>독해 자료를 학습 가능한 형태로 정리합니다</h1>
+            <p>{userName}님의 영어 독해 자료를 모으고, 문장·단어·퀴즈 단위로 분석할 준비를 합니다.</p>
           </div>
           <div className="falcon-stats">
-            <FalconStat icon={BookOpenText} label="독해" value="12분" />
-            <FalconStat icon={Headphones} label="듣기" value="8분" />
-            <FalconStat icon={Target} label="완료율" value="0%" />
+            <FalconStat icon={FileText} label="저장 자료" value={String(materials.length)} />
+            <FalconStat icon={Sparkles} label="분석 대기" value={String(pendingCount)} />
+            <FalconStat icon={CheckCircle2} label="학습 가능" value={String(readyCount)} />
           </div>
         </header>
 
-        <div className="falcon-dashboard">
-          <section className="falcon-main-panel">
+        <div className="material-home-layout">
+          <section className="material-home-main">
             <div className="falcon-section-head">
               <div>
-                <h2>오늘의 통합 학습</h2>
-                <p>먼저 듣고, 스크립트를 확인한 뒤 문장별 독해로 마무리합니다.</p>
+                <h2>최근 저장한 자료</h2>
+                <p>자료를 먼저 쌓아야 오늘 학습, 복습, 단어장이 의미 있게 작동합니다.</p>
               </div>
-              <Button type="button"><PlayCircle size={16} /> 시작</Button>
+              <Button type="button"><Plus size={16} /> 새 자료 추가</Button>
             </div>
-            <div className="daily-flow">
-              <FlowStep icon={Headphones} title="1. 먼저 듣기" body="스크립트를 숨긴 상태로 핵심 내용을 잡습니다." />
-              <FlowStep icon={BookOpenText} title="2. 문장 독해" body="문장 구조, 해석, 핵심 단어를 문단 단위로 확인합니다." />
-              <FlowStep icon={Mic2} title="3. 받아쓰기" body="짧은 문장 3개를 듣고 직접 입력합니다." />
-              <FlowStep icon={ListChecks} title="4. 이해 확인" body="내용 이해 문제와 놓친 단어를 복습합니다." />
-            </div>
-          </section>
-
-          <aside className="falcon-side-panel">
-            <div className="panel-title">
-              <strong>오늘의 타깃</strong>
-              <Clock size={16} />
-            </div>
-            <div className="target-list">
-              <span>기술 문서 독해 1개</span>
-              <span>문장 반복 듣기 5회</span>
-              <span>받아쓰기 3문장</span>
-              <span>단어 4개 저장</span>
-            </div>
-          </aside>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ReadingView() {
-  return (
-    <section className="falcon-view">
-      <div className="falcon-inner">
-        <header className="falcon-page-head">
-          <div>
-            <h1>독해</h1>
-            <p>문장을 쪼개서 읽고, 해석보다 먼저 글의 목적을 잡습니다.</p>
-          </div>
-          <Button variant="outline" type="button"><Search size={16} /> 자료 찾기</Button>
-        </header>
-        <div className="reading-layout">
-          <aside className="lesson-list">
-            <LessonCard active title="Why docs use should" meta="문서 영어 · 8분" />
-            <LessonCard title="How readers infer intent" meta="독해 전략 · 10분" />
-            <LessonCard title="API warnings and notes" meta="개발 문서 · 12분" />
-          </aside>
-          <main className="reader-panel">
-            <div className="reader-title">
-              <span>Technical Reading</span>
-              <h2>Why docs use should</h2>
-            </div>
-            <div className="sentence-stack">
-              {dailySentences.map((sentence) => (
-                <article className="sentence-card" key={sentence.text}>
-                  <p>{sentence.text}</p>
-                  <strong>{sentence.ko}</strong>
-                  <span>{sentence.focus}</span>
-                </article>
+            <div className="recent-material-list">
+              {materials.map((material) => (
+                <MaterialRow key={material.id} material={material} />
               ))}
             </div>
-          </main>
-          <aside className="study-panel">
-            <h2>핵심 단어</h2>
-            {savedWords.slice(0, 3).map((item) => (
-              <div className="word-chip" key={item.word}>
-                <strong>{item.word}</strong>
-                <span>{item.meaning}</span>
-              </div>
-            ))}
+          </section>
+
+          <aside className="material-home-side">
+            <div className="panel-title">
+              <strong>자료화 파이프라인</strong>
+              <Clock size={16} />
+            </div>
+            <div className="pipeline-list">
+              <PipelineStep title="1. 원문 저장" body="출처 URL과 본문을 함께 저장합니다." />
+              <PipelineStep title="2. 문장 분리" body="학습 가능한 문장 단위로 쪼갭니다." />
+              <PipelineStep title="3. 단어 추출" body="반복 학습할 핵심 어휘를 선별합니다." />
+              <PipelineStep title="4. 퀴즈 생성" body="내용 이해 문제로 학습 가능 상태를 만듭니다." />
+            </div>
           </aside>
         </div>
       </div>
@@ -251,40 +231,111 @@ function ReadingView() {
   );
 }
 
-function ListeningView() {
+function ReadingMaterialsView() {
   return (
     <section className="falcon-view">
       <div className="falcon-inner">
         <header className="falcon-page-head">
           <div>
-            <h1>듣기</h1>
-            <p>오디오를 먼저 듣고, 스크립트는 확인과 반복 훈련에 사용합니다.</p>
+            <h1>독해 자료</h1>
+            <p>원문을 수집하고 출처, 난이도, 분석 결과를 함께 관리합니다.</p>
           </div>
-          <Button type="button"><Volume2 size={16} /> 재생</Button>
+          <div className="material-actions">
+            <Button variant="outline" type="button"><Search size={16} /> 검색</Button>
+            <Button type="button"><Save size={16} /> 저장</Button>
+          </div>
         </header>
-        <div className="listening-layout">
-          <section className="audio-panel">
-            <div className="audio-orbit">
-              <Headphones size={42} />
+
+        <div className="material-workbench">
+          <aside className="material-list-panel">
+            <div className="material-list-head">
+              <strong>보관함</strong>
+              <span>{materials.length}</span>
             </div>
-            <h2>Script Hidden Round</h2>
-            <p>첫 라운드는 스크립트를 보지 않고 핵심 주제와 흐름만 잡습니다.</p>
-            <div className="audio-progress"><span /></div>
-            <div className="audio-actions">
-              <Button variant="outline" type="button"><RefreshCw size={16} /> 5초 전</Button>
-              <Button type="button"><PlayCircle size={16} /> 재생</Button>
+            <div className="material-filter-row">
+              <button className="active" type="button">전체</button>
+              <button type="button">공식 문서</button>
+              <button type="button">기사</button>
             </div>
-          </section>
-          <section className="dictation-panel">
-            <h2>받아쓰기</h2>
-            <div className="dictation-box">Listening improves when the script becomes a tool for checking.</div>
-            <div className="dictation-input">들은 문장을 여기에 입력하는 영역</div>
-          </section>
-          <aside className="script-panel">
-            <h2>스크립트</h2>
-            {dailySentences.map((sentence) => (
-              <p key={sentence.text}>{sentence.text}</p>
-            ))}
+            <div className="material-card-list">
+              {materials.map((material) => (
+                <MaterialCard key={material.id} material={material} />
+              ))}
+            </div>
+          </aside>
+
+          <main className="material-editor-panel">
+            <div className="editor-section-title">
+              <div>
+                <span>New Material</span>
+                <h2>새 독해 자료 등록</h2>
+              </div>
+              <strong>초안</strong>
+            </div>
+
+            <div className="material-form-grid">
+              <label>
+                제목
+                <input defaultValue="Why docs use should" />
+              </label>
+              <label>
+                자료 유형
+                <select defaultValue="official">
+                  <option value="official">공식 문서</option>
+                  <option value="article">기사</option>
+                  <option value="book">원서</option>
+                  <option value="exam">시험 지문</option>
+                </select>
+              </label>
+              <label>
+                난이도
+                <select defaultValue="b2">
+                  <option value="b1">B1</option>
+                  <option value="b2">B2</option>
+                  <option value="c1">C1</option>
+                </select>
+              </label>
+              <label className="wide">
+                출처 URL
+                <div className="url-input">
+                  <Link size={16} />
+                  <input defaultValue="https://example.com/docs/should" />
+                </div>
+              </label>
+              <label className="wide">
+                원문
+                <textarea defaultValue={sampleSentences.join("\n\n")} />
+              </label>
+            </div>
+          </main>
+
+          <aside className="analysis-preview-panel">
+            <div className="panel-title">
+              <strong>분석 미리보기</strong>
+              <Sparkles size={16} />
+            </div>
+            <div className="analysis-summary-grid">
+              <PreviewMetric label="문장" value="3" />
+              <PreviewMetric label="단어" value="5" />
+              <PreviewMetric label="예상" value="8분" />
+            </div>
+            <section className="preview-block">
+              <h3>문장 분리</h3>
+              {sampleSentences.map((sentence, index) => (
+                <p key={sentence}><span>{index + 1}</span>{sentence}</p>
+              ))}
+            </section>
+            <section className="preview-block">
+              <h3>핵심 단어</h3>
+              <div className="preview-word-list">
+                {sampleWords.map((word) => <span key={word}>{word}</span>)}
+              </div>
+            </section>
+            <section className="preview-block">
+              <h3>독해 포인트</h3>
+              <p><span>1</span>should와 must의 뉘앙스 차이를 구분합니다.</p>
+              <p><span>2</span>세미콜론 뒤 보충 설명을 앞 문장과 연결합니다.</p>
+            </section>
           </aside>
         </div>
       </div>
@@ -292,24 +343,69 @@ function ListeningView() {
   );
 }
 
-function VocabularyView() {
-  return <SimpleGridView title="단어장" description="독해와 듣기에서 저장한 단어를 한곳에서 복습합니다." items={savedWords.map((item) => `${item.word} · ${item.meaning}`)} />;
+function MaterialRow({ material }: { material: ReadingMaterial }) {
+  return (
+    <article className="material-row">
+      <div>
+        <strong>{material.title}</strong>
+        <span>{material.sourceType} · {material.level} · {material.savedAt}</span>
+      </div>
+      <MaterialStatus status={material.status} />
+    </article>
+  );
 }
 
-function ReviewView() {
-  return <SimpleGridView title="복습" description="놓친 문장, 틀린 이해 문제, 받아쓰기 실패 문장을 다시 잡습니다." items={["놓친 문장 2개", "받아쓰기 재도전 3개", "이해 문제 오답 1개", "오늘 저장 단어 4개"]} />;
+function MaterialCard({ material }: { material: ReadingMaterial }) {
+  return (
+    <button className={`material-card ${material.id === 1 ? "active" : ""}`} type="button">
+      <strong>{material.title}</strong>
+      <span>{material.sourceType} · {material.level}</span>
+      <small>{material.wordCount} words · {material.estimatedMinutes}분</small>
+      <MaterialStatus status={material.status} />
+    </button>
+  );
 }
 
-function RecordsView() {
-  return <SimpleGridView title="기록" description="읽은 시간, 들은 횟수, 연속 학습일을 확인합니다." items={["연속 학습 1일", "이번 주 독해 0개", "이번 주 듣기 0개", "평균 이해도 -"]} />;
+function MaterialStatus({ status }: { status: ReadingMaterial["status"] }) {
+  return <em className={`material-status ${status === "학습 가능" ? "ready" : status === "분석 대기" ? "pending" : "raw"}`}>{status}</em>;
+}
+
+function PipelineStep({ title, body }: { title: string; body: string }) {
+  return (
+    <article className="pipeline-step">
+      <strong>{title}</strong>
+      <span>{body}</span>
+    </article>
+  );
+}
+
+function PreviewMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="preview-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
 }
 
 function ProfileView({ userName }: { userName: string }) {
-  return <SimpleGridView title="프로필" description={`${userName} 계정으로 Falcon English에 로그인되어 있습니다.`} items={["학습 서버 연결", "계정 정보", "개인 학습 기록", "앱 버전 v0.1.15"]} />;
+  return (
+    <SimpleGridView
+      title="프로필"
+      description={`${userName} 계정으로 Falcon English에 로그인되어 있습니다.`}
+      items={["학습 서버 연결", "계정 정보", "개인 자료 보관함", "앱 버전 v0.1.15"]}
+    />
+  );
 }
 
 function SettingsView() {
-  return <SimpleGridView title="설정" description="오디오 반복, 스크립트 표시, 학습 난이도 같은 앱 환경을 배치할 영역입니다." items={["스크립트 자동 표시 OFF", "문장 반복 3회", "난이도 B1-B2", "알림 준비 중"]} />;
+  return (
+    <SimpleGridView
+      title="설정"
+      description="자료 저장, AI 분석, 서버 연결 같은 앱 환경을 배치할 영역입니다."
+      items={["기본 서버 http://localhost:3301", "자동 분석 OFF", "기본 난이도 B2", "출처 URL 저장 ON"]}
+    />
+  );
 }
 
 function SimpleGridView({ title, description, items }: { title: string; description: string; items: string[] }) {
@@ -341,25 +437,6 @@ function FalconStat({ icon: Icon, label, value }: { icon: typeof BookOpenText; l
       <span><Icon size={14} /> {label}</span>
       <strong>{value}</strong>
     </div>
-  );
-}
-
-function FlowStep({ icon: Icon, title, body }: { icon: typeof BookOpenText; title: string; body: string }) {
-  return (
-    <article className="flow-step">
-      <Icon size={20} />
-      <h3>{title}</h3>
-      <p>{body}</p>
-    </article>
-  );
-}
-
-function LessonCard({ title, meta, active = false }: { title: string; meta: string; active?: boolean }) {
-  return (
-    <button type="button" className={`lesson-card ${active ? "active" : ""}`}>
-      <strong>{title}</strong>
-      <span>{meta}</span>
-    </button>
   );
 }
 
