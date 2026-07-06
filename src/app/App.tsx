@@ -46,14 +46,6 @@ const appVersion = "0.1.15";
 
 type ConnectionStatus = "checking" | "online" | "offline";
 
-const sampleSentences = [
-  "The fastest learners do not translate every word; they track the writer's purpose.",
-  "When a document says should, it usually signals a recommendation rather than a hard rule.",
-  "Listening improves when the script becomes a tool for checking, not a crutch for guessing.",
-];
-
-const sampleWords = ["track", "signal", "recommendation", "crutch", "rather than"];
-
 function buildFolderNodes(tree: ReadingTreeResponse, parentId: number | null, depth = 0): ReadingTreeSection["nodes"] {
   return tree.folders
     .filter((folder) => folder.parentId === parentId)
@@ -372,7 +364,6 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const activeFilter = activeNode?.filter ?? { kind: "all" as const };
   const activeTreeLabel = activeNode?.label ?? "전체 자료";
   const activeFolderId = activeNode?.filter.kind === "folder" ? activeNode.filter.folderId : null;
-  const selectedMaterial = materials.find((material) => material.id === selectedMaterialId) ?? materials[0] ?? null;
   const folderOptions = useMemo(
     () => [
       { value: "", label: "폴더 선택 필요" },
@@ -490,7 +481,6 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     setForm({
       ...emptyForm,
       folderId: targetFolderId,
-      originalText: sampleSentences.join("\n\n"),
     });
     setMaterialDialogOpen(true);
   };
@@ -622,35 +612,6 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
               ))}
             </div>
           </main>
-
-          <aside className="analysis-preview-panel">
-            <div className="panel-title">
-              <strong>분석 미리보기</strong>
-              <Sparkles size={16} />
-            </div>
-            <div className="analysis-summary-grid">
-              <PreviewMetric label="문장" value="3" />
-              <PreviewMetric label="단어" value={String(selectedMaterial?.wordCount ?? 0)} />
-              <PreviewMetric label="예상" value={`${selectedMaterial?.estimatedMinutes ?? 0}분`} />
-            </div>
-            <section className="preview-block">
-              <h3>문장 분리</h3>
-              {sampleSentences.map((sentence, index) => (
-                <p key={sentence}><span>{index + 1}</span>{sentence}</p>
-              ))}
-            </section>
-            <section className="preview-block">
-              <h3>핵심 단어</h3>
-              <div className="preview-word-list">
-                {sampleWords.map((word) => <span key={word}>{word}</span>)}
-              </div>
-            </section>
-            <section className="preview-block">
-              <h3>독해 포인트</h3>
-              <p><span>1</span>should와 must의 뉘앙스 차이를 구분합니다.</p>
-              <p><span>2</span>세미콜론 뒤 보충 설명을 앞 문장과 연결합니다.</p>
-            </section>
-          </aside>
         </div>
         {materialDialogOpen ? (
           <div
@@ -785,15 +746,6 @@ function PipelineStep({ title, body }: { title: string; body: string }) {
       <strong>{title}</strong>
       <span>{body}</span>
     </article>
-  );
-}
-
-function PreviewMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="preview-metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 
