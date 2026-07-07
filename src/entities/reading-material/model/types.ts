@@ -1,6 +1,6 @@
-export type ReadingSourceType = "OFFICIAL_DOCS" | "ARTICLE" | "BOOK" | "EXAM_PASSAGE";
+export type ReadingSourceType = "TEXTBOOK_PASSAGE" | "EXAM_PASSAGE" | "NEWS_ARTICLE" | "EXPOSITORY" | "ARGUMENTATIVE" | "ESSAY";
 
-export type ReadingLevel = "B1" | "B2" | "C1";
+export type ReadingLevel = "MIDDLE" | "HIGH_BASIC" | "HIGH" | "CSAT" | "ADVANCED";
 
 export type ReadingMaterialStatus = "RAW" | "ANALYSIS_PENDING" | "READY";
 
@@ -23,6 +23,7 @@ export type ReadingMaterial = {
   status: ReadingMaterialStatus;
   sourceUrl: string | null;
   originalText: string;
+  translationText: string | null;
   collectedDate: string;
   wordCount: number;
   estimatedMinutes: number;
@@ -38,6 +39,7 @@ export type ReadingMaterialUpsertRequest = {
   status: ReadingMaterialStatus;
   sourceUrl: string;
   originalText: string;
+  translationText: string;
   collectedDate: string;
 };
 
@@ -91,11 +93,32 @@ export type ReadingTreeResponse = {
 };
 
 export const sourceTypeLabels: Record<ReadingSourceType, string> = {
-  OFFICIAL_DOCS: "공식 문서",
-  ARTICLE: "기사",
-  BOOK: "원서",
+  TEXTBOOK_PASSAGE: "교과서 지문",
   EXAM_PASSAGE: "시험 지문",
+  NEWS_ARTICLE: "기사문",
+  EXPOSITORY: "설명문",
+  ARGUMENTATIVE: "논설문",
+  ESSAY: "에세이",
 };
+
+export const readingLevelLabels: Record<ReadingLevel, string> = {
+  MIDDLE: "중등",
+  HIGH_BASIC: "고등 기본",
+  HIGH: "고등 실전",
+  CSAT: "수능",
+  ADVANCED: "심화",
+};
+
+export function readingLevelLabel(level: string) {
+  return (
+    {
+      ...readingLevelLabels,
+      B1: "고등 기본",
+      B2: "고등 실전",
+      C1: "심화",
+    }[level] ?? level
+  );
+}
 
 export const statusLabels: Record<ReadingMaterialStatus, string> = {
   RAW: "원문 저장",

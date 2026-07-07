@@ -12,4 +12,4 @@ export type {
   ReadingTreeSection,
   TreeCount,
 } from "./model/types";
-export { sourceTypeLabels, statusLabels } from "./model/types";
+export { readingLevelLabel, readingLevelLabels, sourceTypeLabels, statusLabels } from "./model/types";

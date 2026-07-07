@@ -16,8 +16,9 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarDays, ChevronDown, ChevronRight, Folder, FolderOpen, GripVertical, Pencil, Plus, RefreshCw, Search, Settings, Trash2, X } from "lucide-react";
+import { CalendarDays, ChevronDown, Folder, FolderOpen, GripVertical, Pencil, Plus, RefreshCw, Search, Settings, Trash2, X } from "lucide-react";
 import { Button } from "../../../shared/ui/Button";
+import { Dialog, DialogContent } from "../../../shared/ui/Dialog";
 import type { ReadingTreeFilter, ReadingTreeSection } from "../../../entities/reading-material";
 
 export type FolderDialogState = {
@@ -35,6 +36,7 @@ type ReadingMaterialTreePanelProps = {
   folderDialog: FolderDialogState | null;
   folderManagementOpen: boolean;
   folderDraftName: string;
+  folderError: string;
   creatingFolder: boolean;
   savingFolder: boolean;
   deletingFolder: boolean;
@@ -69,6 +71,7 @@ export function ReadingMaterialTreePanel({
   folderDialog,
   folderManagementOpen,
   folderDraftName,
+  folderError,
   creatingFolder,
   savingFolder,
   deletingFolder,
@@ -188,13 +191,14 @@ export function ReadingMaterialTreePanel({
           onOpenEditFolder={onOpenEditFolder}
           onDeleteFolder={onDeleteFolder}
           deletingFolder={deletingFolder}
+          folderError={folderError}
           onReorderFolder={onReorderFolder}
         />
       ) : null}
 
       {folderDialog ? (
-        <div className="material-dialog-backdrop folder-dialog-backdrop" onClick={onCloseFolderDialog}>
-          <section className="folder-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <Dialog className="material-dialog-backdrop folder-dialog-backdrop bg-slate-950/30 p-8" onClose={onCloseFolderDialog}>
+          <DialogContent className="folder-dialog max-w-none">
             <div className="folder-dialog-head">
               <div>
                 <span>{folderDialog.mode === "create" ? "New Folder" : "Folder Settings"}</span>
@@ -209,6 +213,8 @@ export function ReadingMaterialTreePanel({
               폴더 이름
               <input value={folderDraftName} onChange={(event) => onChangeFolderDraftName(event.target.value)} placeholder="폴더 이름" autoFocus />
             </label>
+
+            {folderError ? <div className="folder-dialog-error">{folderError}</div> : null}
 
             <div className="folder-dialog-actions">
               {folderDialog.mode === "edit" ? (
@@ -226,8 +232,8 @@ export function ReadingMaterialTreePanel({
                 {creatingFolder || savingFolder ? "저장 중" : folderDialog.mode === "create" ? "추가" : "저장"}
               </Button>
             </div>
-          </section>
-        </div>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </aside>
   );
@@ -246,6 +252,7 @@ function nodeFromDialog(dialog: FolderDialogState): ReadingTreeSection["nodes"][
 function FolderManagementDialog({
   nodes,
   deletingFolder,
+  folderError,
   onClose,
   onOpenCreateRoot,
   onOpenCreateChild,
@@ -255,6 +262,7 @@ function FolderManagementDialog({
 }: {
   nodes: ReadingTreeSection["nodes"];
   deletingFolder: boolean;
+  folderError: string;
   onClose: () => void;
   onOpenCreateRoot: () => void;
   onOpenCreateChild: (node: ReadingTreeSection["nodes"][number]) => void;
@@ -262,6 +270,7 @@ function FolderManagementDialog({
   onDeleteFolder: (node?: ReadingTreeSection["nodes"][number]) => void;
   onReorderFolder: (activeFolderId: number, overFolderId: number) => void;
 }) {
+  const [collapsedFolderIds, setCollapsedFolderIds] = useState(() => new Set<number>());
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -269,6 +278,30 @@ function FolderManagementDialog({
   const folderIds = nodes
     .map((node) => node.filter.kind === "folder" ? node.filter.folderId : null)
     .filter((id): id is number => id !== null);
+  const nodeByFolderId = useMemo(() => {
+    const map = new Map<number, ReadingTreeSection["nodes"][number]>();
+    nodes.forEach((node) => {
+      if (node.filter.kind === "folder") map.set(node.filter.folderId, node);
+    });
+    return map;
+  }, [nodes]);
+  const isHiddenByCollapsedAncestor = (node: ReadingTreeSection["nodes"][number]) => {
+    let parentId = node.parentFolderId ?? null;
+    while (parentId !== null) {
+      if (collapsedFolderIds.has(parentId)) return true;
+      const parentNode = nodeByFolderId.get(parentId);
+      parentId = parentNode?.parentFolderId ?? null;
+    }
+    return false;
+  };
+  const toggleFolder = (folderId: number) => {
+    setCollapsedFolderIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const activeFolderId = Number(event.active.id);
@@ -278,8 +311,8 @@ function FolderManagementDialog({
   };
 
   return (
-    <div className="material-dialog-backdrop folder-dialog-backdrop" onClick={onClose}>
-      <section className="folder-manage-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+    <Dialog className="material-dialog-backdrop folder-dialog-backdrop bg-slate-950/30 p-8" onClose={onClose}>
+      <DialogContent className="folder-manage-dialog max-w-none">
         <div className="folder-dialog-head">
           <div>
             <span>Folder Manager</span>
@@ -296,6 +329,8 @@ function FolderManagementDialog({
           </Button>
         </div>
 
+        {folderError ? <div className="folder-dialog-error">{folderError}</div> : null}
+
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={folderIds} strategy={verticalListSortingStrategy}>
             <div className="folder-manage-list">
@@ -304,6 +339,8 @@ function FolderManagementDialog({
                 const previousNode = nodes[index - 1];
                 const startsRootGroup = (node.depth ?? 0) === 0 && previousNode !== undefined;
                 const hasChildren = folderId !== null && nodes.some((candidate) => candidate.parentFolderId === folderId);
+                const collapsed = folderId !== null && collapsedFolderIds.has(folderId);
+                const collapsedChild = isHiddenByCollapsedAncestor(node);
                 return folderId === null ? null : (
                   <ManageFolderRow
                     key={node.id}
@@ -311,7 +348,10 @@ function FolderManagementDialog({
                     node={node}
                     startsRootGroup={startsRootGroup}
                     hasChildren={hasChildren}
+                    collapsed={collapsed}
+                    collapsedChild={collapsedChild}
                     deletingFolder={deletingFolder}
+                    onToggleFolder={toggleFolder}
                     onOpenCreateChild={onOpenCreateChild}
                     onOpenEditFolder={onOpenEditFolder}
                     onDeleteFolder={onDeleteFolder}
@@ -321,8 +361,8 @@ function FolderManagementDialog({
             </div>
           </SortableContext>
         </DndContext>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -331,7 +371,10 @@ function ManageFolderRow({
   node,
   startsRootGroup,
   hasChildren,
+  collapsed,
+  collapsedChild,
   deletingFolder,
+  onToggleFolder,
   onOpenCreateChild,
   onOpenEditFolder,
   onDeleteFolder,
@@ -340,19 +383,33 @@ function ManageFolderRow({
   node: ReadingTreeSection["nodes"][number];
   startsRootGroup: boolean;
   hasChildren: boolean;
+  collapsed: boolean;
+  collapsedChild: boolean;
   deletingFolder: boolean;
+  onToggleFolder: (folderId: number) => void;
   onOpenCreateChild: (node: ReadingTreeSection["nodes"][number]) => void;
   onOpenEditFolder: (node: ReadingTreeSection["nodes"][number]) => void;
   onDeleteFolder: (node?: ReadingTreeSection["nodes"][number]) => void;
 }) {
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({ id: folderId });
+  const rowTransition = [
+    transition,
+    "max-height 180ms ease",
+    "min-height 180ms ease",
+    "opacity 140ms ease",
+    "padding 180ms ease",
+    "margin 180ms ease",
+    "border-width 180ms ease",
+  ]
+    .filter(Boolean)
+    .join(", ");
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: rowTransition || undefined,
   };
 
   return (
-    <div className={`folder-manage-row depth-${node.depth ?? 0} ${startsRootGroup ? "root-start" : ""} ${isDragging ? "dragging" : ""}`} ref={setNodeRef} style={style}>
+    <div className={`folder-manage-row depth-${node.depth ?? 0} ${startsRootGroup ? "root-start" : ""} ${isDragging ? "dragging" : ""} ${collapsedChild ? "collapsed-child" : ""}`} ref={setNodeRef} style={style}>
       <button
         type="button"
         className="folder-manage-drag"
@@ -366,9 +423,17 @@ function ManageFolderRow({
       </button>
       <div className="folder-manage-name" style={{ paddingLeft: `${(node.depth ?? 0) * 14}px` }}>
         {hasChildren ? (
-          <ChevronDown className="folder-manage-chevron" size={14} />
+          <button
+            type="button"
+            className="folder-manage-chevron-button"
+            onClick={() => onToggleFolder(folderId)}
+            aria-label={collapsed ? "하위 폴더 펼치기" : "하위 폴더 접기"}
+            title={collapsed ? "하위 폴더 펼치기" : "하위 폴더 접기"}
+          >
+            <ChevronDown className={collapsed ? "collapsed" : ""} size={14} />
+          </button>
         ) : (
-          <ChevronRight className="folder-manage-chevron muted" size={14} />
+          <span className="folder-manage-chevron-spacer" aria-hidden="true" />
         )}
         <Folder size={15} />
         <span>{node.label}</span>
@@ -406,19 +471,48 @@ function TreeSection({
   onToggleFolder: (folderId: number) => void;
   onOpenContextMenu: (node: ReadingTreeSection["nodes"][number], x: number, y: number) => void;
 }) {
+  const { nodeByFolderId, childFolderIdsByParentId } = useMemo(() => {
+    const folderNodes = section.nodes.filter((node) => node.filter.kind === "folder");
+    const nextNodeByFolderId = new Map(folderNodes.map((node) => [node.filter.kind === "folder" ? node.filter.folderId : 0, node]));
+    const nextChildFolderIdsByParentId = new Map<number, number[]>();
+    folderNodes.forEach((node) => {
+      if (node.filter.kind !== "folder" || node.parentFolderId === null || node.parentFolderId === undefined) return;
+      nextChildFolderIdsByParentId.set(node.parentFolderId, [
+        ...(nextChildFolderIdsByParentId.get(node.parentFolderId) ?? []),
+        node.filter.folderId,
+      ]);
+    });
+    return { nodeByFolderId: nextNodeByFolderId, childFolderIdsByParentId: nextChildFolderIdsByParentId };
+  }, [section.nodes]);
+
+  const isHiddenByCollapsedAncestor = useMemo(() => {
+    return (node: ReadingTreeSection["nodes"][number]) => {
+      if (section.id !== "library") return false;
+      let parentId = node.parentFolderId ?? null;
+      while (parentId !== null) {
+        if (collapsedFolders.has(parentId)) return true;
+        const parentNode = nodeByFolderId.get(parentId);
+        parentId = parentNode?.parentFolderId ?? null;
+      }
+      return false;
+    };
+  }, [collapsedFolders, nodeByFolderId, section.id]);
+
   return (
     <section className="material-tree-section">
       <button className="material-tree-section-title" type="button" onClick={() => onToggleSection(section.id)}>
         <ChevronDown className={collapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} />
         <strong>{section.label}</strong>
       </button>
-      <div className="material-tree-node-list">
+      <div className={`material-tree-node-list ${collapsed ? "collapsed" : ""}`}>
         {section.nodes.map((node) => {
           const folderId = node.filter.kind === "folder" ? node.filter.folderId : null;
+          const hasChildFolders = folderId !== null && (childFolderIdsByParentId.get(folderId)?.length ?? 0) > 0;
           const isFolderCollapsed = folderId !== null && collapsedFolders.has(folderId);
+          const isCollapsedChild = isHiddenByCollapsedAncestor(node);
           return (
             <div
-              className="material-tree-node-wrap"
+              className={`material-tree-node-wrap ${isCollapsedChild ? "collapsed-child" : ""}`}
               key={node.id}
               style={{ paddingLeft: `${(node.depth ?? 0) * 18}px` }}
               onContextMenu={(event) => {
@@ -428,17 +522,17 @@ function TreeSection({
               }}
             >
               <button
-                className={`material-tree-collapse ${folderId === null ? "spacer" : ""}`}
+                className={`material-tree-collapse ${!hasChildFolders ? "spacer" : ""}`}
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  if (folderId !== null) onToggleFolder(folderId);
+                  if (folderId !== null && hasChildFolders) onToggleFolder(folderId);
                 }}
-                title={folderId !== null ? "하위 폴더 접기" : undefined}
-                aria-hidden={folderId === null}
-                tabIndex={folderId === null ? -1 : 0}
+                title={hasChildFolders ? "하위 폴더 접기" : undefined}
+                aria-hidden={!hasChildFolders}
+                tabIndex={hasChildFolders ? 0 : -1}
               >
-                {folderId !== null ? <ChevronDown className={isFolderCollapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} /> : null}
+                {hasChildFolders ? <ChevronDown className={isFolderCollapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} /> : null}
               </button>
               <button
                 className={`material-tree-node ${node.id === activeTreeId ? "active" : ""}`}

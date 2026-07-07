@@ -26,6 +26,16 @@ export async function sendChat(apiUrl: string, token: string, body: ChatRequest)
   return (await response.json()) as { content: string };
 }
 
+export async function translateToKorean(apiUrl: string, token: string, text: string) {
+  const response = await apiFetch(`${apiUrl}/api/ai/translate-to-korean`, {
+    method: "POST",
+    headers: jsonAuthHeaders(token),
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return (await response.json()) as { text: string };
+}
+
 export async function streamChat(
   apiUrl: string,
   token: string,
