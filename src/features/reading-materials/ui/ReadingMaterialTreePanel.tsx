@@ -409,7 +409,7 @@ function TreeSection({
   return (
     <section className="material-tree-section">
       <button className="material-tree-section-title" type="button" onClick={() => onToggleSection(section.id)}>
-        <ChevronDown className={collapsed ? "collapsed" : ""} size={15} />
+        <ChevronDown className={collapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} />
         <strong>{section.label}</strong>
       </button>
       <div className="material-tree-node-list">
@@ -420,6 +420,7 @@ function TreeSection({
             <div
               className="material-tree-node-wrap"
               key={node.id}
+              style={{ paddingLeft: `${(node.depth ?? 0) * 18}px` }}
               onContextMenu={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -437,10 +438,10 @@ function TreeSection({
                 aria-hidden={folderId === null}
                 tabIndex={folderId === null ? -1 : 0}
               >
-                {folderId !== null ? <ChevronDown className={isFolderCollapsed ? "collapsed" : ""} size={14} /> : null}
+                {folderId !== null ? <ChevronDown className={isFolderCollapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} /> : null}
               </button>
               <button
-                className={`material-tree-node depth-${node.depth ?? 0} ${node.id === activeTreeId ? "active" : ""}`}
+                className={`material-tree-node ${node.id === activeTreeId ? "active" : ""}`}
                 type="button"
                 onClick={() => onSelect(node.id, node.filter)}
               >

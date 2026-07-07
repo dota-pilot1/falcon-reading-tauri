@@ -1,40 +1,51 @@
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "../lib/cn";
 
-type ButtonVariant = "default" | "outline" | "ghost";
-type ButtonSize = "default" | "icon";
+const buttonVariants = cva(
+  [
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg border text-[13px] font-extrabold transition-colors",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
+    "disabled:pointer-events-none disabled:opacity-50",
+  ],
+  {
+    variants: {
+      variant: {
+        default: "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800",
+        outline: "border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100",
+        ghost: "border-transparent bg-transparent text-zinc-700 hover:bg-zinc-100",
+        secondary: "border-slate-200 bg-slate-100 text-slate-900 hover:bg-slate-200",
+        destructive: "border-red-600 bg-red-600 text-white hover:bg-red-700",
+      },
+      size: {
+        default: "min-h-[38px] px-3",
+        sm: "min-h-8 px-2.5 text-xs",
+        icon: "h-10 w-10 p-0",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
+  VariantProps<typeof buttonVariants> & {
   children: ReactNode;
+  asChild?: boolean;
 };
 
-const variantClass: Record<ButtonVariant, string> = {
-  default: "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800 disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400",
-  outline: "border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100 disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400",
-  ghost: "border-transparent bg-transparent text-zinc-700 hover:bg-zinc-100 disabled:text-zinc-400",
-};
-
-const sizeClass: Record<ButtonSize, string> = {
-  default: "min-h-[38px] px-3",
-  icon: "h-10 w-10 p-0",
-};
-
-export function Button({ className, variant = "default", size = "default", type = "button", children, ...props }: ButtonProps) {
+export function Button({ className, variant, size, type = "button", children, asChild = false, ...props }: ButtonProps) {
+  const Comp = asChild ? Slot : "button";
   return (
-    <button
+    <Comp
       type={type}
-      className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg border text-[13px] font-extrabold transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
-        variantClass[variant],
-        sizeClass[size],
-        className,
-      )}
+      className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     >
       {children}
-    </button>
+    </Comp>
   );
 }

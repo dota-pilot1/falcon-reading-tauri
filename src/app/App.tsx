@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   CircleAlert,
+  Folder,
   Link,
+  PlayCircle,
   Plus,
   Save,
+  X,
 } from "lucide-react";
 import { WEB_HEADER_MENUS, PROFILE_MENU, SETTINGS_MENU, canAccessMenu, type WebMenu, type WebMenuId } from "./model/navigation";
 import { LoginScreen } from "../features/auth/login/LoginScreen";
@@ -13,8 +16,12 @@ import { useAuthSession } from "../features/auth/model/useAuthSession";
 import { defaultApiUrl, unauthorizedEventName } from "../shared/api/client";
 import { AppSidebar } from "../widgets/app-shell/ui/AppSidebar";
 import { AppTopbar } from "../widgets/app-shell/ui/AppTopbar";
+import { Badge } from "../shared/ui/Badge";
 import { Button } from "../shared/ui/Button";
+import { Card, CardDescription, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Select } from "../shared/ui/Select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/Tabs";
+import { useInvalidateReadingMaterials, useReadingMaterialsQuery, useReadingTreeQuery } from "../features/reading-materials/model/useReadingMaterialQueries";
 import {
   type ReadingLevel,
   sourceTypeLabels,
@@ -33,7 +40,6 @@ import {
   createReadingMaterial,
   deleteReadingFolder,
   fetchReadingMaterials,
-  fetchReadingTree,
   renameReadingFolder,
   reorderReadingFolders,
   updateReadingMaterial,
@@ -42,6 +48,49 @@ import {
 const appVersion = "0.1.16";
 
 type ConnectionStatus = "checking" | "online" | "offline";
+type StudyQueueKey = "today" | "week" | "month";
+type StudyQueueState = Record<StudyQueueKey, string[]>;
+
+const studyQueueStorageKey = "falcon-reading-study-queues";
+const studyQueueTabs: Array<{ key: StudyQueueKey; label: string; description: string }> = [
+  { key: "today", label: "오늘의 학습", description: "지금 바로 읽을 자료" },
+  { key: "week", label: "이주의 학습", description: "이번 주 후보 자료" },
+  { key: "month", label: "이달의 학습", description: "장기 학습 풀" },
+];
+
+const emptyStudyQueues: StudyQueueState = {
+  today: [],
+  week: [],
+  month: [],
+};
+
+function loadStudyQueues(): StudyQueueState {
+  if (typeof window === "undefined") return emptyStudyQueues;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(studyQueueStorageKey) ?? "{}") as Partial<StudyQueueState>;
+    return {
+      today: Array.isArray(parsed.today) ? parsed.today : [],
+      week: Array.isArray(parsed.week) ? parsed.week : [],
+      month: Array.isArray(parsed.month) ? parsed.month : [],
+    };
+  } catch {
+    return emptyStudyQueues;
+  }
+}
+
+function addMaterialsToStudyQueue(queue: StudyQueueKey, materialIds: string[]) {
+  const queues = loadStudyQueues();
+  const nextIds = [...queues[queue]];
+  for (const materialId of materialIds) {
+    if (!nextIds.includes(materialId)) nextIds.push(materialId);
+  }
+  const nextQueues = {
+    ...queues,
+    [queue]: nextIds,
+  };
+  window.localStorage.setItem(studyQueueStorageKey, JSON.stringify(nextQueues));
+  return nextQueues;
+}
 
 function buildFolderNodes(tree: ReadingTreeResponse, parentId: number | null, depth = 0): ReadingTreeSection["nodes"] {
   return tree.folders
@@ -216,6 +265,7 @@ export function App() {
 
 function FalconWorkspace({ activeMenu, userName, apiUrl, token }: { activeMenu: WebMenuId; userName: string; apiUrl: string; token: string }) {
   if (activeMenu === "readingMaterials") return <ReadingMaterialsView apiUrl={apiUrl} token={token} />;
+  if (activeMenu === "readingStudy") return <ReadingStudyView apiUrl={apiUrl} token={token} />;
   if (activeMenu === "profile") return <ProfileView userName={userName} />;
   if (activeMenu === "settings") return <SettingsView />;
   return <ReadingMaterialsView apiUrl={apiUrl} token={token} />;
@@ -245,17 +295,11 @@ function formFromMaterial(material: ReadingMaterial): ReadingMaterialUpsertReque
   };
 }
 
-function paramsFromFilter(filter: ReadingTreeFilter) {
-  if (filter.kind === "folder") return { folderId: filter.folderId };
-  if (filter.kind === "date") return { date: filter.date };
-  if (filter.kind === "sourceType") return { sourceType: filter.sourceType };
-  if (filter.kind === "status") return { status: filter.status };
-  return {};
-}
-
 function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string }) {
-  const [tree, setTree] = useState<ReadingTreeResponse | null>(null);
-  const [materials, setMaterials] = useState<ReadingMaterial[]>([]);
+  const [todayQueueIds, setTodayQueueIds] = useState<Set<string>>(() => new Set(loadStudyQueues().today));
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(() => new Set());
+  const [moveTargetFolderId, setMoveTargetFolderId] = useState("");
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [activeTreeId, setActiveTreeId] = useState("all");
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
   const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(() => new Set());
@@ -271,7 +315,14 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const [refreshingTree, setRefreshingTree] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [movingMaterials, setMovingMaterials] = useState(false);
+  const treeQuery = useReadingTreeQuery(apiUrl, token);
+  const tree = treeQuery.data ?? null;
   const treeSections = useMemo(() => (tree ? buildTreeSections(tree) : []), [tree]);
+  const moveFolderNodes = useMemo(
+    () => treeSections.find((section) => section.id === "library")?.nodes.filter((node) => node.filter.kind === "folder") ?? [],
+    [treeSections]
+  );
   const visibleTreeSections = useMemo(
     () => treeSections.map((section) => ({
       ...section,
@@ -283,6 +334,28 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const activeFilter = activeNode?.filter ?? { kind: "all" as const };
   const activeTreeLabel = activeNode?.label ?? "전체 자료";
   const activeFolderId = activeNode?.filter.kind === "folder" ? activeNode.filter.folderId : null;
+  const materialsQuery = useReadingMaterialsQuery(apiUrl, token, activeFilter);
+  const materials = materialsQuery.data ?? [];
+  const invalidateReadingMaterials = useInvalidateReadingMaterials(apiUrl);
+  const queryError = treeQuery.error ?? materialsQuery.error;
+  const visibleError = error || (queryError instanceof Error ? queryError.message : "");
+  const selectedMaterials = useMemo(
+    () => materials.filter((material) => selectedMaterialIds.has(material.id)),
+    [materials, selectedMaterialIds]
+  );
+  const selectedSourceFolderId = useMemo(() => {
+    const folderIds = new Set(selectedMaterials.map((material) => material.folderId).filter((folderId): folderId is number => folderId !== null));
+    return folderIds.size === 1 ? [...folderIds][0] : null;
+  }, [selectedMaterials]);
+  const childFolders = useMemo(
+    () =>
+      activeFolderId === null
+        ? []
+        : (tree?.folders ?? [])
+            .filter((folder) => folder.parentId === activeFolderId)
+            .sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id),
+    [activeFolderId, tree?.folders]
+  );
   const folderOptions = useMemo(
     () => [
       { value: "", label: "폴더 선택 필요" },
@@ -294,23 +367,11 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     [tree?.folders]
   );
 
-  const reloadTree = async () => {
-    const nextTree = await fetchReadingTree(apiUrl, token);
-    setTree(nextTree);
-  };
-
-  const reloadMaterials = async (filter: ReadingTreeFilter = activeFilter) => {
-    const items = await fetchReadingMaterials(apiUrl, token, paramsFromFilter(filter));
-    setMaterials(items);
-    setSelectedMaterialId(items[0]?.id ?? null);
-    setForm(items[0] ? formFromMaterial(items[0]) : emptyForm);
-  };
-
   const refreshReadingWorkspace = async () => {
     setRefreshingTree(true);
     setError("");
     try {
-      await Promise.all([reloadTree(), reloadMaterials(activeFilter)]);
+      await Promise.all([treeQuery.refetch(), materialsQuery.refetch()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "자료 트리를 새로고침하지 못했습니다.");
     } finally {
@@ -319,29 +380,25 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   };
 
   useEffect(() => {
-    let cancelled = false;
-    void Promise.all([fetchReadingTree(apiUrl, token), fetchReadingMaterials(apiUrl, token)])
-      .then(([nextTree, items]) => {
-        if (cancelled) return;
-        setTree(nextTree);
-        setMaterials(items);
-        setSelectedMaterialId(items[0]?.id ?? null);
-        setForm(items[0] ? formFromMaterial(items[0]) : emptyForm);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "독해 자료를 불러오지 못했습니다.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [apiUrl, token]);
+    const nextMaterial = selectedMaterialId ? materials.find((material) => material.id === selectedMaterialId) : materials[0];
+    if (nextMaterial) {
+      setSelectedMaterialId(nextMaterial.id);
+      setForm(formFromMaterial(nextMaterial));
+      return;
+    }
+    setSelectedMaterialId(null);
+    setForm(emptyForm);
+  }, [materials, selectedMaterialId]);
 
-  const selectTreeNode = (nodeId: string, filter: ReadingTreeFilter) => {
+  const selectTreeNode = (nodeId: string, _filter: ReadingTreeFilter) => {
     setActiveTreeId(nodeId);
+    setSelectedMaterialIds(new Set());
+    setMoveTargetFolderId("");
     setError("");
-    void reloadMaterials(filter).catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : "자료 목록을 불러오지 못했습니다.");
-    });
+  };
+
+  const selectFolder = (folderId: number) => {
+    selectTreeNode(`folder:${folderId}`, { kind: "folder", folderId });
   };
 
   const toggleSection = (sectionId: string) => {
@@ -405,6 +462,50 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     setMaterialDialogOpen(true);
   };
 
+  const toggleMaterialSelection = (materialId: string) => {
+    setSelectedMaterialIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(materialId)) next.delete(materialId);
+      else next.add(materialId);
+      return next;
+    });
+  };
+
+  const assignSelectedTodayStudy = () => {
+    if (selectedMaterialIds.size === 0) return;
+    const nextQueues = addMaterialsToStudyQueue("today", Array.from(selectedMaterialIds));
+    setTodayQueueIds(new Set(nextQueues.today));
+    setSelectedMaterialIds(new Set());
+  };
+
+  const moveSelectedMaterials = async () => {
+    if (selectedMaterialIds.size === 0 || !moveTargetFolderId) return;
+    const targetFolderId = Number(moveTargetFolderId);
+    if (!Number.isFinite(targetFolderId)) return;
+    if (selectedSourceFolderId === targetFolderId) return;
+    if (selectedMaterials.length === 0) return;
+    setMovingMaterials(true);
+    setError("");
+    try {
+      await Promise.all(
+        selectedMaterials.map((material) =>
+          updateReadingMaterial(apiUrl, token, material.id, {
+            ...formFromMaterial(material),
+            folderId: targetFolderId,
+          })
+        )
+      );
+      setSelectedMaterialIds(new Set());
+      setMoveTargetFolderId("");
+      setMoveDialogOpen(false);
+      await invalidateReadingMaterials();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "자료 이동에 실패했습니다.");
+    } finally {
+      setMovingMaterials(false);
+    }
+  };
+
   const startNewMaterial = () => {
     const targetFolderId = activeFolderId ?? tree?.folders[0]?.id ?? null;
     if (targetFolderId === null) {
@@ -434,12 +535,10 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
           name,
           parentId: folderDialog.parentId,
         });
-        const nextTree = await fetchReadingTree(apiUrl, token);
-        setTree(nextTree);
         closeFolderDialog();
         setActiveTreeId(`folder:${folder.id}`);
-        await reloadMaterials({ kind: "folder", folderId: folder.id });
         setForm((prev) => ({ ...prev, folderId: folder.id }));
+        await invalidateReadingMaterials();
       } catch (err) {
         setError(err instanceof Error ? err.message : "폴더 생성에 실패했습니다.");
       } finally {
@@ -451,16 +550,8 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     if (folderDialog.folderId === null) return;
     setSavingFolder(true);
     try {
-      const renamedFolder = await renameReadingFolder(apiUrl, token, folderDialog.folderId, { name });
-      setTree((prev) =>
-        prev
-          ? {
-              ...prev,
-              folders: prev.folders.map((folder) => (folder.id === renamedFolder.id ? renamedFolder : folder)),
-            }
-          : prev
-      );
-      await reloadTree();
+      await renameReadingFolder(apiUrl, token, folderDialog.folderId, { name });
+      await invalidateReadingMaterials();
       closeFolderDialog();
     } catch (err) {
       setError(err instanceof Error ? err.message : "폴더 수정에 실패했습니다.");
@@ -476,10 +567,9 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     setError("");
     try {
       await deleteReadingFolder(apiUrl, token, folderId);
-      await reloadTree();
+      await invalidateReadingMaterials();
       if (activeTreeId === `folder:${folderId}`) {
         setActiveTreeId("all");
-        await reloadMaterials({ kind: "all" });
       }
       closeFolderDialog();
     } catch (err) {
@@ -513,7 +603,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
         parentId: target.parentId,
         orderedIds: reordered.map((folder) => folder.id),
       });
-      await reloadTree();
+      await invalidateReadingMaterials();
     } catch (err) {
       setError(err instanceof Error ? err.message : "폴더 순서 변경에 실패했습니다.");
     }
@@ -530,11 +620,10 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
       const saved = selectedMaterialId
         ? await updateReadingMaterial(apiUrl, token, selectedMaterialId, form)
         : await createReadingMaterial(apiUrl, token, form);
-      await reloadTree();
-      await reloadMaterials(activeFilter);
       setSelectedMaterialId(saved.id);
       setForm(formFromMaterial(saved));
       setMaterialDialogOpen(false);
+      await invalidateReadingMaterials();
     } catch (err) {
       setError(err instanceof Error ? err.message : "독해 자료 저장에 실패했습니다.");
     } finally {
@@ -552,7 +641,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
           </div>
         </header>
 
-        {error ? <div className="material-error">{error}</div> : null}
+        {visibleError ? <div className="material-error">{visibleError}</div> : null}
 
         <div className="material-workbench">
           <ReadingMaterialTreePanel
@@ -586,24 +675,98 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
           <main className="material-editor-panel">
             <div className="editor-section-title">
               <div>
-                <span>Reading Materials</span>
+                <span>자료 관리</span>
                 <h2>{activeTreeLabel}</h2>
               </div>
               <Button type="button" onClick={startNewMaterial}><Plus size={16} /> 자료 추가</Button>
             </div>
 
+            {activeFolderId !== null ? (
+              <div className="material-folder-section">
+                <div className="material-inline-head">
+                  <strong>하위 폴더</strong>
+                  <span>{childFolders.length}</span>
+                </div>
+                {childFolders.length === 0 ? <div className="material-empty">이 폴더에 하위 폴더가 없습니다.</div> : null}
+                {childFolders.length > 0 ? (
+                  <div className="material-folder-grid">
+                    {childFolders.map((folder) => (
+                      <button key={folder.id} type="button" className="material-folder-card" onClick={() => selectFolder(folder.id)}>
+                        <span>
+                          <Folder size={17} />
+                        </span>
+                        <strong>{folder.name}</strong>
+                        <small>{folder.materialCount}개 자료</small>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="material-inline-list">
               <div className="material-inline-head">
-                <strong>독해 자료</strong>
-                <span>{materials.length}</span>
+                <strong>
+                  {activeFolderId === null ? "독해 자료" : "이 폴더의 독해 자료"}
+                  <span>{materials.length}</span>
+                </strong>
+                <div className="material-inline-head-actions">
+                  <Button
+                    type="button"
+                    className="material-move-button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setMoveTargetFolderId("");
+                      setMoveDialogOpen(true);
+                    }}
+                    disabled={selectedMaterialIds.size === 0 || movingMaterials}
+                  >
+                    폴더 이동
+                  </Button>
+                  <Button
+                    type="button"
+                    className="material-bulk-assign"
+                    variant={selectedMaterialIds.size > 0 ? "default" : "outline"}
+                    size="sm"
+                    onClick={assignSelectedTodayStudy}
+                    disabled={selectedMaterialIds.size === 0}
+                  >
+                    오늘의 학습{selectedMaterialIds.size > 0 ? ` ${selectedMaterialIds.size}` : ""}
+                  </Button>
+                </div>
               </div>
               {materials.length === 0 ? <div className="material-empty">선택한 트리에 저장된 자료가 없습니다.</div> : null}
               {materials.map((material) => (
-                <MaterialCard key={material.id} material={material} active={material.id === selectedMaterialId} onSelect={() => selectMaterial(material)} />
+                <MaterialCard
+                  key={material.id}
+                  material={material}
+                  active={material.id === selectedMaterialId}
+                  assignedToday={todayQueueIds.has(material.id)}
+                  checked={selectedMaterialIds.has(material.id)}
+                  onSelect={() => selectMaterial(material)}
+                  onToggleSelection={() => toggleMaterialSelection(material.id)}
+                />
               ))}
             </div>
           </main>
         </div>
+        {moveDialogOpen ? (
+          <MoveMaterialsDialog
+            folders={moveFolderNodes}
+            selectedCount={selectedMaterialIds.size}
+            currentFolderId={selectedSourceFolderId}
+            targetFolderId={moveTargetFolderId}
+            moving={movingMaterials}
+            onChangeTarget={setMoveTargetFolderId}
+            onClose={() => {
+              if (movingMaterials) return;
+              setMoveDialogOpen(false);
+              setMoveTargetFolderId("");
+            }}
+            onConfirm={() => void moveSelectedMaterials()}
+          />
+        ) : null}
         {materialDialogOpen ? (
           <div
             className="material-dialog-backdrop fixed inset-0 z-[80] grid place-items-center bg-slate-950/30 p-8"
@@ -704,19 +867,311 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   );
 }
 
-function MaterialCard({ material, active, onSelect }: { material: ReadingMaterial; active: boolean; onSelect: () => void }) {
+function MoveMaterialsDialog({
+  folders,
+  selectedCount,
+  currentFolderId,
+  targetFolderId,
+  moving,
+  onChangeTarget,
+  onClose,
+  onConfirm,
+}: {
+  folders: ReadingTreeSection["nodes"];
+  selectedCount: number;
+  currentFolderId: number | null;
+  targetFolderId: string;
+  moving: boolean;
+  onChangeTarget: (folderId: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
   return (
-    <button className={`material-card ${active ? "active" : ""}`} type="button" onClick={onSelect}>
-      <strong>{material.title}</strong>
-      <span>{sourceTypeLabels[material.sourceType]} · {material.level}</span>
-      <small>{material.wordCount} words · {material.estimatedMinutes}분</small>
-      <MaterialStatus status={material.status} />
-    </button>
+    <div className="material-dialog-backdrop folder-dialog-backdrop" onClick={onClose}>
+      <section className="material-move-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <div className="folder-dialog-head">
+          <div>
+            <span>Move Materials</span>
+            <h2>폴더 이동</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="닫기" disabled={moving}>
+            <X size={18} />
+          </button>
+        </div>
+        <p className="material-move-summary">선택한 독해 자료 {selectedCount}개를 이동할 폴더를 선택하세요.</p>
+        <div className="material-move-folder-list">
+          {folders.map((node) => {
+            if (node.filter.kind !== "folder") return null;
+            const value = String(node.filter.folderId);
+            const current = currentFolderId === node.filter.folderId;
+            const selected = targetFolderId === value;
+            return (
+              <button
+                key={node.id}
+                type="button"
+                className={`material-move-folder ${selected ? "selected" : ""} ${current ? "current" : ""}`}
+                style={{ paddingLeft: `${12 + (node.depth ?? 0) * 18}px` }}
+                disabled={current}
+                onClick={() => onChangeTarget(value)}
+              >
+                <Folder size={16} />
+                <span>{node.label}</span>
+                {current ? <strong>현재</strong> : null}
+                <em>{node.count}</em>
+              </button>
+            );
+          })}
+        </div>
+        <div className="folder-dialog-actions">
+          <Button type="button" variant="outline" onClick={onClose} disabled={moving}>
+            취소
+          </Button>
+          <Button type="button" onClick={onConfirm} disabled={!targetFolderId || moving || targetFolderId === String(currentFolderId)}>
+            {moving ? "이동 중" : "이동"}
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MaterialCard({
+  material,
+  active,
+  assignedToday,
+  checked,
+  onSelect,
+  onToggleSelection,
+}: {
+  material: ReadingMaterial;
+  active: boolean;
+  assignedToday: boolean;
+  checked: boolean;
+  onSelect: () => void;
+  onToggleSelection: () => void;
+}) {
+  return (
+    <article className={`material-card ${active ? "active" : ""}`}>
+      <label className={`material-card-check ${assignedToday ? "assigned" : ""}`}>
+        <input type="checkbox" checked={checked} onChange={onToggleSelection} />
+        <span>{checked ? "선택됨" : "선택"}</span>
+      </label>
+      <button className="material-card-open" type="button" onClick={onSelect}>
+        <strong>{material.title}</strong>
+        <span>{sourceTypeLabels[material.sourceType]} · {material.level}</span>
+        <small>{material.wordCount} words · {material.estimatedMinutes}분 · {material.collectedDate}</small>
+        {assignedToday ? <small>오늘의 학습 지정됨</small> : null}
+        <MaterialStatus status={material.status} />
+      </button>
+    </article>
   );
 }
 
 function MaterialStatus({ status }: { status: ReadingMaterial["status"] }) {
   return <em className={`material-status ${status === "READY" ? "ready" : status === "ANALYSIS_PENDING" ? "pending" : "raw"}`}>{statusLabels[status]}</em>;
+}
+
+function ReadingStudyView({ apiUrl, token }: { apiUrl: string; token: string }) {
+  const [materials, setMaterials] = useState<ReadingMaterial[]>([]);
+  const [queues, setQueues] = useState<StudyQueueState>(() => loadStudyQueues());
+  const [activeQueue, setActiveQueue] = useState<StudyQueueKey>("today");
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const materialById = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials]);
+  const queueMaterials = useMemo(
+    () => queues[activeQueue].map((materialId) => materialById.get(materialId)).filter((material): material is ReadingMaterial => Boolean(material)),
+    [activeQueue, materialById, queues]
+  );
+  const selectedMaterial = queueMaterials.find((material) => material.id === selectedMaterialId) ?? queueMaterials[0] ?? null;
+  const previewSentences = useMemo(() => {
+    if (!selectedMaterial) return [];
+    return selectedMaterial.originalText
+      .split(/(?<=[.!?])\s+/)
+      .map((sentence) => sentence.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+  }, [selectedMaterial]);
+  const activeQueueMeta = studyQueueTabs.find((tab) => tab.key === activeQueue) ?? studyQueueTabs[0];
+
+  useEffect(() => {
+    let cancelled = false;
+    setError("");
+    void fetchReadingMaterials(apiUrl, token)
+      .then((items) => {
+        if (cancelled) return;
+        setMaterials(items);
+        const storedQueues = loadStudyQueues();
+        setQueues(storedQueues);
+        const firstQueuedId = storedQueues.today[0] ?? storedQueues.week[0] ?? storedQueues.month[0] ?? null;
+        setSelectedMaterialId(firstQueuedId);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "학습 자료를 불러오지 못했습니다.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, token]);
+
+  useEffect(() => {
+    if (materials.length === 0) return;
+    const validIds = new Set(materials.map((material) => material.id));
+    setQueues((prev) => ({
+      today: prev.today.filter((materialId) => validIds.has(materialId)),
+      week: prev.week.filter((materialId) => validIds.has(materialId)),
+      month: prev.month.filter((materialId) => validIds.has(materialId)),
+    }));
+  }, [materials]);
+
+  useEffect(() => {
+    window.localStorage.setItem(studyQueueStorageKey, JSON.stringify(queues));
+  }, [queues]);
+
+  const removeFromQueue = (queue: StudyQueueKey, materialId: string) => {
+    setQueues((prev) => ({
+      ...prev,
+      [queue]: prev[queue].filter((queuedId) => queuedId !== materialId),
+    }));
+    if (selectedMaterialId === materialId) {
+      const nextId = queues[queue].find((queuedId) => queuedId !== materialId) ?? null;
+      setSelectedMaterialId(nextId);
+    }
+  };
+
+  return (
+    <section className="falcon-view">
+      <div className="falcon-inner">
+        <header className="falcon-page-head">
+          <div>
+            <h1>독해 학습</h1>
+            <p>전체 자료 중에서 오늘, 이번 주, 이번 달에 볼 학습 큐를 만들고 순서대로 진행합니다.</p>
+          </div>
+          <Tabs
+            className="justify-self-end"
+            value={activeQueue}
+            onValueChange={(value) => {
+              const queue = value as StudyQueueKey;
+              setActiveQueue(queue);
+              setSelectedMaterialId(queues[queue][0] ?? null);
+            }}
+          >
+            <TabsList>
+              {studyQueueTabs.map((tab) => (
+                <TabsTrigger key={tab.key} value={tab.key} className="gap-2">
+                  {tab.label}
+                  <Badge variant={activeQueue === tab.key ? "outline" : "secondary"}>{queues[tab.key].length}</Badge>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </header>
+
+        {error ? <div className="material-error">{error}</div> : null}
+
+        <div className="reading-study-layout">
+          <Card className="reading-study-list">
+            <CardHeader className="grid-cols-[minmax(0,1fr)_auto] items-start p-0">
+              <div>
+                <CardTitle>{activeQueueMeta.label}</CardTitle>
+                <CardDescription>{activeQueueMeta.description}</CardDescription>
+              </div>
+              <Badge variant="outline">{queueMaterials.length}</Badge>
+            </CardHeader>
+            {queueMaterials.length === 0 ? <div className="material-empty">독해 자료에서 자료를 선택해 {activeQueueMeta.label}으로 지정하세요.</div> : null}
+            {queueMaterials.map((material, index) => (
+              <div key={material.id} className={`reading-study-card ${selectedMaterial?.id === material.id ? "active" : ""}`}>
+                <button type="button" onClick={() => setSelectedMaterialId(material.id)}>
+                  <span>{index + 1}</span>
+                  <strong>{material.title}</strong>
+                  <small>{sourceTypeLabels[material.sourceType]} · {material.level} · {material.estimatedMinutes}분</small>
+                </button>
+                <Button type="button" variant="outline" size="sm" onClick={() => removeFromQueue(activeQueue, material.id)}>제외</Button>
+              </div>
+            ))}
+          </Card>
+
+          <Card className="reading-study-stage">
+            {selectedMaterial ? (
+              <>
+                <div className="editor-section-title">
+                  <div>
+                    <span>Study Session</span>
+                    <h2>{selectedMaterial.title}</h2>
+                    <p>{sourceTypeLabels[selectedMaterial.sourceType]} · {selectedMaterial.level} · {selectedMaterial.estimatedMinutes}분</p>
+                  </div>
+                  <Button type="button">
+                    <PlayCircle size={16} /> 학습 시작
+                  </Button>
+                </div>
+
+                <Tabs defaultValue="reading">
+                  <TabsList aria-label="학습 단계">
+                    <TabsTrigger value="reading">본문</TabsTrigger>
+                    <TabsTrigger value="sentences">문장 분석</TabsTrigger>
+                    <TabsTrigger value="words">단어</TabsTrigger>
+                    <TabsTrigger value="quiz">퀴즈</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="reading">
+                    <article className="reading-study-reader">
+                      <div className="reading-study-reader-head">
+                        <strong>본문 읽기</strong>
+                        <Badge variant={selectedMaterial.status === "READY" ? "success" : selectedMaterial.status === "ANALYSIS_PENDING" ? "warning" : "secondary"}>
+                          {statusLabels[selectedMaterial.status]}
+                        </Badge>
+                      </div>
+                      <p>{selectedMaterial.originalText}</p>
+                    </article>
+                  </TabsContent>
+                  <TabsContent value="sentences">
+                    <div className="reading-study-reader">
+                      <div className="reading-study-reader-head">
+                        <strong>문장 분석</strong>
+                        <Badge variant="secondary">{previewSentences.length}</Badge>
+                      </div>
+                      {previewSentences.length === 0 ? <p>분석할 문장이 없습니다.</p> : null}
+                      <ol>
+                        {previewSentences.map((sentence) => (
+                          <li key={sentence}>{sentence}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="words">
+                    <div className="material-empty">핵심 단어 추출 결과를 연결할 영역입니다.</div>
+                  </TabsContent>
+                  <TabsContent value="quiz">
+                    <div className="material-empty">이해도 퀴즈를 연결할 영역입니다.</div>
+                  </TabsContent>
+                </Tabs>
+
+                <section className="reading-study-support">
+                  <div>
+                    <strong>문장 단위 미리보기</strong>
+                    {previewSentences.length === 0 ? <p>분석할 문장이 없습니다.</p> : null}
+                    <ol>
+                      {previewSentences.map((sentence) => (
+                        <li key={sentence}>{sentence}</li>
+                      ))}
+                    </ol>
+                  </div>
+                  <div>
+                    <strong>학습 흐름</strong>
+                    <span>본문 읽기</span>
+                    <span>문장 구조 확인</span>
+                    <span>핵심 단어 복습</span>
+                    <span>이해도 퀴즈</span>
+                  </div>
+                </section>
+              </>
+            ) : (
+              <div className="material-empty">독해 자료에서 학습할 자료를 오늘의 학습으로 지정하세요.</div>
+            )}
+          </Card>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function ProfileView({ userName }: { userName: string }) {

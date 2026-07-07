@@ -1,0 +1,47 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ReadingTreeFilter } from "../../../entities/reading-material";
+import { fetchReadingMaterials, fetchReadingTree } from "../../../entities/reading-material/api/readingMaterialApi";
+
+function paramsFromFilter(filter: ReadingTreeFilter) {
+  if (filter.kind === "folder") return { folderId: filter.folderId };
+  if (filter.kind === "date") return { date: filter.date };
+  if (filter.kind === "sourceType") return { sourceType: filter.sourceType };
+  if (filter.kind === "status") return { status: filter.status };
+  return {};
+}
+
+export const readingMaterialQueryKeys = {
+  root: ["reading-materials"] as const,
+  tree: (apiUrl: string) => ["reading-materials", apiUrl, "tree"] as const,
+  materialsRoot: (apiUrl: string) => ["reading-materials", apiUrl, "materials"] as const,
+  materials: (apiUrl: string, filter: ReadingTreeFilter) => ["reading-materials", apiUrl, "materials", filter] as const,
+};
+
+export function useReadingTreeQuery(apiUrl: string, token: string) {
+  return useQuery({
+    queryKey: readingMaterialQueryKeys.tree(apiUrl),
+    queryFn: () => fetchReadingTree(apiUrl, token),
+    enabled: token.trim().length > 0,
+  });
+}
+
+export function useReadingMaterialsQuery(apiUrl: string, token: string, filter: ReadingTreeFilter) {
+  return useQuery({
+    queryKey: readingMaterialQueryKeys.materials(apiUrl, filter),
+    queryFn: async () => {
+      const items = await fetchReadingMaterials(apiUrl, token, paramsFromFilter(filter));
+      return filter.kind === "folder" ? items.filter((material) => material.folderId === filter.folderId) : items;
+    },
+    enabled: token.trim().length > 0,
+  });
+}
+
+export function useInvalidateReadingMaterials(apiUrl: string) {
+  const queryClient = useQueryClient();
+
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.tree(apiUrl) }),
+      queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.materialsRoot(apiUrl) }),
+    ]);
+}

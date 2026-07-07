@@ -1,4 +1,5 @@
 import {
+  BookOpenCheck,
   BookOpenText,
   Settings,
   UserCircle,
@@ -6,7 +7,7 @@ import {
 } from "lucide-react";
 import type { UserSummary } from "../../entities/user/model/types";
 
-export type WebMenuId = "readingMaterials" | "profile" | "settings";
+export type WebMenuId = "readingMaterials" | "readingStudy" | "profile" | "settings";
 
 export type WebMenu = {
   id: WebMenuId;
@@ -20,8 +21,14 @@ export const WEB_HEADER_MENUS: WebMenu[] = [
   {
     id: "readingMaterials",
     label: "독해 자료",
-    subtitle: "원문 저장 · 분석 준비 · 학습 자료화",
+    subtitle: "원문 저장 · 분석 준비 · 자료 정리",
     icon: BookOpenText,
+  },
+  {
+    id: "readingStudy",
+    label: "독해 학습",
+    subtitle: "본문 읽기 · 문장 분석 · 퀴즈 복습",
+    icon: BookOpenCheck,
   },
 ];
 
