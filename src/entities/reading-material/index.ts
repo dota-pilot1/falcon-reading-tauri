@@ -10,6 +10,8 @@ export type {
   ReadingTreeNode,
   ReadingTreeResponse,
   ReadingTreeSection,
+  ReadingVocabularyItem,
+  ReadingVocabularyItemUpsertRequest,
   TreeCount,
 } from "./model/types";
 export { readingLevelLabel, readingLevelLabels, sourceTypeLabels, statusLabels } from "./model/types";

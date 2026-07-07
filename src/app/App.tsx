@@ -1,5 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { useMemo, useState, useEffect } from "react";
+import { AgGridReact } from "ag-grid-react";
+import type { ColDef } from "ag-grid-community";
 import {
   BookOpenCheck,
   CheckSquare,
@@ -10,6 +12,7 @@ import {
   Play,
   Plus,
   Save,
+  Search,
   X,
 } from "lucide-react";
 import { defaultApiUrl, unauthorizedEventName } from "../shared/api/client";
@@ -29,6 +32,7 @@ import {
   createReadingMaterial,
   deleteReadingFolder,
   fetchReadingMaterials,
+  replaceReadingMaterialVocabulary,
   renameReadingFolder,
   reorderReadingFolders,
   updateReadingMaterial,
@@ -45,16 +49,38 @@ import {
   type ReadingSourceType,
   type ReadingTreeFilter,
   type ReadingTreeSection,
+  type ReadingVocabularyItem,
+  type ReadingVocabularyItemUpsertRequest,
 } from "../entities/reading-material";
-import { translateToKorean } from "../entities/chat/api/chatApi";
+import { sendChat, translateToKorean } from "../entities/chat/api/chatApi";
 import { WEB_HEADER_MENUS, PROFILE_MENU, SETTINGS_MENU, canAccessMenu, type WebMenu, type WebMenuId } from "./model/navigation";
 import {
   useInvalidateReadingMaterials,
+  useReadingMaterialVocabularyQuery,
   useReadingMaterialsQuery,
   useReadingTreeQuery,
 } from "../features/reading-materials/model/useReadingMaterialQueries";
 
 type ConnectionStatus = "checking" | "online" | "offline";
+type SentenceAnalysis = {
+  chunks: string[];
+  grammar: string[];
+  raw?: string;
+};
+
+type SyntaxDialogState = {
+  sentenceIndex: number;
+  sentence: string;
+  analysis?: SentenceAnalysis;
+  error?: string;
+};
+
+type VocabularyEntry = {
+  id?: number | null;
+  word: string;
+  meaning: string;
+  note: string;
+};
 
 const LEARNING_QUEUE_KEY = "falcon-reading:learning-queue";
 const fallbackUser = {
@@ -74,6 +100,10 @@ const emptyForm: ReadingMaterialUpsertRequest = {
   sourceUrl: "",
   originalText: "",
   translationText: "",
+  chunkAnalysisText: "",
+  grammarAnalysisText: "",
+  keyExpressionText: "",
+  sentenceAnalysisText: "",
   collectedDate: new Date().toISOString().slice(0, 10),
 };
 
@@ -239,6 +269,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     [activeFolderId, folders],
   );
   const folderOptions = useMemo(() => buildFolderOptions(folders), [folders]);
+  const { data: selectedVocabulary = [], isLoading: loadingSelectedVocabulary } = useReadingMaterialVocabularyQuery(apiUrl, token, selectedMaterialId);
   const refreshAll = async () => {
     setRefreshing(true);
     setError("");
@@ -312,6 +343,30 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     } finally {
       setTranslating(false);
     }
+  };
+
+  const generateVocabularyAnalysis = async () => {
+    const text = form.originalText.trim();
+    if (!text) {
+      throw new Error("단어 정리를 만들 원문을 먼저 입력하세요.");
+    }
+    if (!selectedMaterialId) {
+      throw new Error("자료를 먼저 저장한 뒤 단어 정리를 생성하세요.");
+    }
+    const vocabularyItems = await requestVocabularyAnalysis(apiUrl, token, text);
+    await replaceReadingMaterialVocabulary(apiUrl, token, selectedMaterialId, vocabularyItems.map((item, index) => ({
+      ...item,
+      displayOrder: index,
+    })));
+    await invalidateReadingMaterials();
+  };
+
+  const saveVocabulary = async (items: ReadingVocabularyItemUpsertRequest[]) => {
+    if (!selectedMaterialId) {
+      throw new Error("자료를 먼저 저장한 뒤 단어 정리를 편집하세요.");
+    }
+    await replaceReadingMaterialVocabulary(apiUrl, token, selectedMaterialId, items);
+    await invalidateReadingMaterials();
   };
 
   const saveFolder = async () => {
@@ -545,6 +600,10 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
             onClose={() => setMaterialDialogOpen(false)}
             onChange={setForm}
             onGenerateTranslation={() => void generateTranslation()}
+            onGenerateVocabularyAnalysis={generateVocabularyAnalysis}
+            vocabularyItems={selectedVocabulary}
+            vocabularyLoading={loadingSelectedVocabulary}
+            onSaveVocabulary={saveVocabulary}
             onSave={() => void saveMaterial()}
           />
         ) : null}
@@ -562,6 +621,10 @@ function MaterialDialog({
   onClose,
   onChange,
   onGenerateTranslation,
+  onGenerateVocabularyAnalysis,
+  vocabularyItems,
+  vocabularyLoading,
+  onSaveVocabulary,
   onSave,
 }: {
   form: ReadingMaterialUpsertRequest;
@@ -572,11 +635,41 @@ function MaterialDialog({
   onClose: () => void;
   onChange: (updater: (prev: ReadingMaterialUpsertRequest) => ReadingMaterialUpsertRequest) => void;
   onGenerateTranslation: () => void;
+  onGenerateVocabularyAnalysis: () => Promise<void>;
+  vocabularyItems: ReadingVocabularyItem[];
+  vocabularyLoading: boolean;
+  onSaveVocabulary: (items: ReadingVocabularyItemUpsertRequest[]) => Promise<void>;
   onSave: () => void;
 }) {
+  const [generatingVocabularyAnalysis, setGeneratingVocabularyAnalysis] = useState(false);
+  const [vocabularyAnalysisError, setVocabularyAnalysisError] = useState("");
+  const [savingVocabulary, setSavingVocabulary] = useState(false);
+  const generateDialogVocabularyAnalysis = async () => {
+    setGeneratingVocabularyAnalysis(true);
+    setVocabularyAnalysisError("");
+    try {
+      await onGenerateVocabularyAnalysis();
+    } catch (caught) {
+      setVocabularyAnalysisError(caught instanceof Error ? caught.message : "단어 정리 생성에 실패했습니다.");
+    } finally {
+      setGeneratingVocabularyAnalysis(false);
+    }
+  };
+  const saveDialogVocabulary = async (items: ReadingVocabularyItemUpsertRequest[]) => {
+    setSavingVocabulary(true);
+    setVocabularyAnalysisError("");
+    try {
+      await onSaveVocabulary(items);
+    } catch (caught) {
+      setVocabularyAnalysisError(caught instanceof Error ? caught.message : "단어 정리 저장에 실패했습니다.");
+    } finally {
+      setSavingVocabulary(false);
+    }
+  };
+
   return (
     <Dialog className="material-dialog-backdrop z-[80] bg-slate-950/30 p-8" onClose={onClose}>
-      <DialogContent className="material-dialog grid max-h-[calc(100vh-96px)] w-[min(1120px,calc(100vw-96px))] max-w-none overflow-auto rounded-[10px] border border-zinc-200 bg-white p-[18px] shadow-2xl">
+      <DialogContent className="material-dialog grid max-h-[calc(100vh-96px)] w-[min(1280px,calc(100vw-96px))] max-w-none overflow-auto rounded-[10px] border border-zinc-200 bg-white p-[18px] shadow-2xl">
         <div className="editor-section-title">
           <div>
             <span>{selectedMaterialId ? "Saved Material" : "New Material"}</span>
@@ -651,6 +744,30 @@ function MaterialDialog({
               />
             </label>
           </div>
+          <div className="wide flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
+            <strong className="text-sm font-black text-zinc-900">단어 정리</strong>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="min-h-[32px] !border !border-slate-400 !bg-white px-3 text-xs font-extrabold !text-slate-700 shadow-none hover:!border-slate-500 hover:!bg-slate-50 hover:!text-zinc-900"
+              onClick={() => void generateDialogVocabularyAnalysis()}
+              disabled={generatingVocabularyAnalysis || form.originalText.trim().length === 0}
+            >
+              {generatingVocabularyAnalysis ? <Loader2 size={14} className="spin" /> : <CheckSquare size={14} />}
+              {generatingVocabularyAnalysis ? "정리 중" : "단어 정리 AI"}
+            </Button>
+          </div>
+          {vocabularyAnalysisError ? <div className="folder-dialog-error wide">{vocabularyAnalysisError}</div> : null}
+          <div className="material-vocabulary-field wide">
+            <VocabularyEditor
+              disabled={!selectedMaterialId}
+              loading={vocabularyLoading}
+              saving={savingVocabulary}
+              items={vocabularyItems}
+              onSave={saveDialogVocabulary}
+            />
+          </div>
         </div>
 
         <div className="material-dialog-actions">
@@ -699,18 +816,102 @@ function MaterialCard({
 function ReadingStudyView({ apiUrl, token }: { apiUrl: string; token: string }) {
   const [queue, setQueue] = useLearningQueue();
   const [selectedId, setSelectedId] = useState<string | null>(queue[0] ?? null);
+  const [syntaxDialog, setSyntaxDialog] = useState<SyntaxDialogState | null>(null);
+  const [savedSentenceAnalyses, setSavedSentenceAnalyses] = useState(() => new Map<string, SentenceAnalysis>());
+  const [analyzingSentenceIndex, setAnalyzingSentenceIndex] = useState<number | null>(null);
+  const [generatingVocabulary, setGeneratingVocabulary] = useState(false);
+  const [vocabularyError, setVocabularyError] = useState("");
   const { data: allMaterials = [], isLoading, error } = useReadingMaterialsQuery(apiUrl, token, { kind: "all" });
+  const invalidateReadingMaterials = useInvalidateReadingMaterials(apiUrl);
   const materialMap = useMemo(() => new Map(allMaterials.map((material) => [material.id, material])), [allMaterials]);
   const queuedMaterials = queue.map((id) => materialMap.get(id)).filter(Boolean) as ReadingMaterial[];
   const selectedMaterial = selectedId ? materialMap.get(selectedId) ?? queuedMaterials[0] ?? null : queuedMaterials[0] ?? null;
+  const syntaxSentences = useMemo(() => splitReadingSentences(selectedMaterial?.originalText ?? ""), [selectedMaterial?.originalText]);
+  const { data: selectedVocabulary = [] } = useReadingMaterialVocabularyQuery(apiUrl, token, selectedMaterial?.id ?? null);
 
   useEffect(() => {
     if (!selectedMaterial && queuedMaterials[0]) setSelectedId(queuedMaterials[0].id);
   }, [queuedMaterials, selectedMaterial]);
 
+  useEffect(() => {
+    setSyntaxDialog(null);
+    setAnalyzingSentenceIndex(null);
+  }, [selectedMaterial?.id]);
+
+  useEffect(() => {
+    setSavedSentenceAnalyses(parseStoredSentenceAnalysisMap(selectedMaterial?.sentenceAnalysisText));
+  }, [selectedMaterial?.id, selectedMaterial?.sentenceAnalysisText]);
+
   const removeFromQueue = (id: string) => {
     setQueue((prev) => prev.filter((item) => item !== id));
     if (selectedId === id) setSelectedId(null);
+  };
+
+  const generateSelectedVocabulary = async () => {
+    if (!selectedMaterial) return;
+    setGeneratingVocabulary(true);
+    setVocabularyError("");
+    try {
+      const vocabularyItems = await requestVocabularyAnalysis(apiUrl, token, selectedMaterial.originalText);
+      await replaceReadingMaterialVocabulary(apiUrl, token, selectedMaterial.id, vocabularyItems.map((item, index) => ({
+        ...item,
+        displayOrder: index,
+      })));
+      await invalidateReadingMaterials();
+    } catch (caught) {
+      setVocabularyError(caught instanceof Error ? caught.message : "단어 정리 생성에 실패했습니다.");
+    } finally {
+      setGeneratingVocabulary(false);
+    }
+  };
+
+  const syntaxCacheKey = (sentence: string, sentenceIndex: number) => `${selectedMaterial?.id ?? "unknown"}:${sentenceIndex}:${sentence}`;
+  const openSyntaxSentence = (sentence: string, sentenceIndex: number) => {
+    const saved = savedSentenceAnalyses.get(syntaxCacheKey(sentence, sentenceIndex));
+    if (saved) {
+      setSyntaxDialog({ sentenceIndex, sentence, analysis: saved });
+      return;
+    }
+    void analyzeSyntaxSentence(sentence, sentenceIndex, true);
+  };
+  const analyzeSyntaxSentence = async (sentence: string, sentenceIndex: number, openDialog = false) => {
+    if (openDialog) setSyntaxDialog({ sentenceIndex, sentence });
+    setAnalyzingSentenceIndex(sentenceIndex);
+    try {
+      const result = await sendChat(apiUrl, token, {
+        agentId: "reading-syntax-analyzer",
+        history: [],
+        instructions: [
+          "You are an English reading tutor for Korean middle and high school students.",
+          "Analyze exactly one English sentence.",
+          "Return only JSON with keys chunks, grammar.",
+          "chunks: Korean explanations of meaningful chunks in reading order.",
+          "grammar: Korean explanations of important grammar patterns.",
+          "Keep each item short and useful for reading comprehension.",
+        ].join("\n"),
+        message: `Analyze this sentence for a Korean student:\n${sentence}`,
+      });
+      const analysis = parseSentenceAnalysis(result.content);
+      const nextAnalyses = new Map(savedSentenceAnalyses);
+      nextAnalyses.set(syntaxCacheKey(sentence, sentenceIndex), analysis);
+      setSavedSentenceAnalyses(nextAnalyses);
+      setSyntaxDialog({ sentenceIndex, sentence, analysis });
+      if (selectedMaterial) {
+        await updateReadingMaterial(apiUrl, token, selectedMaterial.id, {
+          ...formFromMaterial(selectedMaterial),
+          sentenceAnalysisText: serializeSentenceAnalysisMap(nextAnalyses),
+        });
+        await invalidateReadingMaterials();
+      }
+    } catch (caught) {
+      setSyntaxDialog({
+        sentenceIndex,
+        sentence,
+        error: caught instanceof Error ? caught.message : "문장 분석에 실패했습니다.",
+      });
+    } finally {
+      setAnalyzingSentenceIndex(null);
+    }
   };
 
   return (
@@ -783,7 +984,7 @@ function ReadingStudyView({ apiUrl, token }: { apiUrl: string; token: string }) 
                       <TabsList className="reading-study-assist-tabs" aria-label="독해 보조 탭">
                         <TabsTrigger value="translation"><Languages size={14} />전체 해석</TabsTrigger>
                         <TabsTrigger value="syntax"><BookOpenCheck size={14} />구문 분석</TabsTrigger>
-                        <TabsTrigger value="phrases"><CheckSquare size={14} />핵심 표현</TabsTrigger>
+                        <TabsTrigger value="phrases"><CheckSquare size={14} />단어 정리</TabsTrigger>
                       </TabsList>
                       <TabsContent value="translation">
                         <div className="reading-study-assist-panel">
@@ -805,14 +1006,70 @@ function ReadingStudyView({ apiUrl, token }: { apiUrl: string; token: string }) 
                       </TabsContent>
                       <TabsContent value="syntax">
                         <div className="reading-study-assist-panel">
-                          <p className="assist-muted">구문 분석 데이터가 연결되면 이 영역에 표시됩니다.</p>
+                          {selectedMaterial.chunkAnalysisText || selectedMaterial.grammarAnalysisText ? (
+                            <div className="stored-analysis-summary">
+                              {selectedMaterial.chunkAnalysisText ? (
+                                <section>
+                                  <h3>청크 분석</h3>
+                                  <p>{selectedMaterial.chunkAnalysisText}</p>
+                                </section>
+                              ) : null}
+                              {selectedMaterial.grammarAnalysisText ? (
+                                <section>
+                                  <h3>문법 분석</h3>
+                                  <p>{selectedMaterial.grammarAnalysisText}</p>
+                                </section>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {syntaxSentences.length > 0 ? (
+                            <ol className="syntax-sentence-list">
+                              {syntaxSentences.map((sentence, index) => (
+                                <li key={`${index}-${sentence}`}>
+                                  <span>{index + 1}</span>
+                                  <p>{sentence}</p>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openSyntaxSentence(sentence, index)}
+                                    disabled={analyzingSentenceIndex !== null}
+                                  >
+                                    {analyzingSentenceIndex === index ? <Loader2 size={14} className="spin" /> : <Search size={14} />}
+                                    {savedSentenceAnalyses.has(syntaxCacheKey(sentence, index)) ? "보기" : "분석"}
+                                  </Button>
+                                </li>
+                              ))}
+                            </ol>
+                          ) : (
+                            <p className="assist-muted">분석할 문장이 없습니다.</p>
+                          )}
                         </div>
                       </TabsContent>
                       <TabsContent value="phrases">
                         <div className="reading-study-assist-panel">
-                          <div className="phrase-grid">
-                            {extractKeywords(selectedMaterial.originalText).map((keyword) => <span key={keyword}>{keyword}</span>)}
+                          <div className="reading-study-assist-head">
+                            <strong>단어 정리</strong>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void generateSelectedVocabulary()}
+                              disabled={generatingVocabulary || !selectedMaterial.originalText.trim()}
+                            >
+                              {generatingVocabulary ? <Loader2 size={14} className="spin" /> : <CheckSquare size={14} />}
+                              {generatingVocabulary ? "정리 중" : "단어 정리 AI"}
+                            </Button>
                           </div>
+                          {vocabularyError ? <div className="folder-dialog-error">{vocabularyError}</div> : null}
+                          {selectedVocabulary.length > 0 ? (
+                            <VocabularyDisplay items={selectedVocabulary} />
+                          ) : (
+                            <div className="translation-empty">
+                              <strong>저장된 단어 정리가 없습니다.</strong>
+                              <span>단어 정리 AI를 실행하거나 독해 자료 수정에서 직접 입력하세요.</span>
+                            </div>
+                          )}
                         </div>
                       </TabsContent>
                     </Tabs>
@@ -824,9 +1081,324 @@ function ReadingStudyView({ apiUrl, token }: { apiUrl: string; token: string }) 
             )}
           </section>
         </div>
+        {syntaxDialog ? (
+          <SyntaxAnalysisDialog
+            state={syntaxDialog}
+            loading={analyzingSentenceIndex === syntaxDialog.sentenceIndex}
+            onReanalyze={() => void analyzeSyntaxSentence(syntaxDialog.sentence, syntaxDialog.sentenceIndex, true)}
+            onClose={() => setSyntaxDialog(null)}
+          />
+        ) : null}
       </div>
     </section>
   );
+}
+
+function VocabularyEditor({
+  disabled,
+  loading,
+  saving,
+  items,
+  onSave,
+}: {
+  disabled: boolean;
+  loading: boolean;
+  saving: boolean;
+  items: ReadingVocabularyItem[];
+  onSave: (items: ReadingVocabularyItemUpsertRequest[]) => Promise<void>;
+}) {
+  const [rows, setRows] = useState<VocabularyEntry[]>([]);
+  const columnDefs = useMemo<ColDef<VocabularyEntry>[]>(() => [
+    { field: "word", headerName: "단어", editable: !disabled, flex: 1, minWidth: 140 },
+    { field: "meaning", headerName: "뜻", editable: !disabled, flex: 1, minWidth: 160 },
+    { field: "note", headerName: "메모", editable: !disabled, flex: 1.6, minWidth: 220 },
+  ], [disabled]);
+
+  useEffect(() => {
+    setRows(items.map((item) => ({
+      id: item.id,
+      word: item.word,
+      meaning: item.meaning,
+      note: item.note ?? "",
+    })));
+  }, [items]);
+
+  const addEntry = () => setRows((prev) => [...prev, { word: "", meaning: "", note: "" }]);
+  const removeEmptyRows = () => setRows((prev) => prev.filter((entry) => entry.word.trim() || entry.meaning.trim() || entry.note.trim()));
+  const saveRows = () => onSave(rows.map((entry, index) => ({
+    id: entry.id ?? null,
+    word: entry.word,
+    meaning: entry.meaning,
+    note: entry.note,
+    displayOrder: index,
+  })));
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs font-bold text-slate-500">
+          {disabled ? "자료를 저장한 뒤 단어 정리를 편집할 수 있습니다." : `${rows.length}개 단어`}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={addEntry} disabled={disabled || loading}>+ 행 추가</Button>
+          <Button type="button" variant="outline" size="sm" onClick={removeEmptyRows} disabled={disabled || loading}>빈 행 정리</Button>
+          <Button type="button" size="sm" onClick={() => void saveRows()} disabled={disabled || loading || saving}>
+            {saving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
+            {saving ? "저장 중" : "단어 저장"}
+          </Button>
+        </div>
+      </div>
+      <div className="ag-theme-quartz material-vocabulary-grid">
+        <AgGridReact<VocabularyEntry>
+          rowData={rows}
+          columnDefs={columnDefs}
+          defaultColDef={{ sortable: false, resizable: true, editable: !disabled }}
+          stopEditingWhenCellsLoseFocus
+          domLayout="normal"
+          onCellValueChanged={(event) => {
+            const nextRows = [...rows];
+            if (event.rowIndex !== null && event.rowIndex >= 0) {
+              nextRows[event.rowIndex] = event.data;
+              setRows(nextRows);
+            }
+          }}
+          overlayNoRowsTemplate={loading ? "단어를 불러오는 중입니다." : "단어 정리를 직접 추가하거나 AI로 생성하세요."}
+        />
+      </div>
+    </div>
+  );
+}
+
+function VocabularyDisplay({ items }: { items: Array<Pick<ReadingVocabularyItem, "word" | "meaning" | "note">> }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200">
+      <table className="w-full border-collapse text-left text-sm">
+        <thead className="bg-slate-50 text-xs font-black text-slate-500">
+          <tr>
+            <th className="border-b border-slate-200 px-3 py-2">단어</th>
+            <th className="border-b border-slate-200 px-3 py-2">뜻</th>
+            <th className="border-b border-slate-200 px-3 py-2">메모</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((entry, index) => (
+            <tr key={`${entry.word}-${index}`} className="align-top">
+              <td className="border-b border-slate-100 px-3 py-2 font-extrabold text-slate-900">{entry.word}</td>
+              <td className="border-b border-slate-100 px-3 py-2 text-slate-700">{entry.meaning}</td>
+              <td className="border-b border-slate-100 px-3 py-2 text-slate-600">{entry.note ?? ""}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SyntaxAnalysisDialog({
+  state,
+  loading,
+  onReanalyze,
+  onClose,
+}: {
+  state: SyntaxDialogState;
+  loading: boolean;
+  onReanalyze: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog className="material-dialog-backdrop z-[90] bg-slate-950/30 p-8" onClose={onClose}>
+      <DialogContent className="syntax-analysis-dialog max-w-none">
+        <div className="folder-dialog-head">
+          <div>
+            <span>Sentence Analysis</span>
+            <h2>{state.sentenceIndex + 1}번 문장 분석</h2>
+          </div>
+          <div className="inline-flex items-center gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={onReanalyze} disabled={loading}>
+              {loading ? <Loader2 size={14} className="spin" /> : <Search size={14} />}
+              재분석
+            </Button>
+            <button type="button" className="icon-button" onClick={onClose} aria-label="닫기" title="닫기">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <blockquote>{state.sentence}</blockquote>
+
+        {loading ? (
+          <div className="syntax-analysis-loading rounded-2xl border border-slate-200 bg-slate-50 p-8">
+            <div className="relative h-20 w-32">
+              <div className="absolute left-2 top-4 h-12 w-20 rounded-xl border border-slate-300 bg-white shadow-sm" />
+              <div className="absolute left-10 top-1 h-14 w-20 rounded-xl border border-emerald-200 bg-emerald-50 shadow-sm" />
+              <Search className="absolute bottom-0 right-3 text-slate-700" size={30} />
+            </div>
+            <Loader2 className="spin text-emerald-600" size={18} />
+            <span>문장을 분석하는 중입니다.</span>
+          </div>
+        ) : state.error ? (
+          <div className="folder-dialog-error">{state.error}</div>
+        ) : state.analysis ? (
+          <div className="syntax-analysis-grid">
+            <SyntaxAnalysisSection title="청크 분석" items={state.analysis.chunks} emptyText="청크 분석 결과가 없습니다." />
+            <SyntaxAnalysisSection title="문법 분석" items={state.analysis.grammar} emptyText="문법 분석 결과가 없습니다." />
+            {state.analysis.raw ? <pre>{state.analysis.raw}</pre> : null}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SyntaxAnalysisSection({ title, items, emptyText }: { title: string; items: string[]; emptyText: string }) {
+  return (
+    <section>
+      <h3>{title}</h3>
+      {items.length > 0 ? (
+        <ul>
+          {items.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}
+        </ul>
+      ) : (
+        <p>{emptyText}</p>
+      )}
+    </section>
+  );
+}
+
+function splitReadingSentences(text: string) {
+  return text
+    .replace(/\s+/g, " ")
+    .match(/[^.!?]+[.!?]+(?:["')\]]+)?|[^.!?]+$/g)
+    ?.map((sentence) => sentence.trim())
+    .filter(Boolean) ?? [];
+}
+
+function parseSentenceAnalysis(content: string): SentenceAnalysis {
+  const normalized = content.trim();
+  const jsonText = normalized.match(/```json\s*([\s\S]*?)```/)?.[1]
+    ?? normalized.match(/```\s*([\s\S]*?)```/)?.[1]
+    ?? normalized;
+  try {
+    const parsed = JSON.parse(jsonText) as Partial<SentenceAnalysis>;
+    return {
+      chunks: normalizeAnalysisItems(parsed.chunks),
+      grammar: normalizeAnalysisItems(parsed.grammar),
+    };
+  } catch {
+    return {
+      chunks: [],
+      grammar: [],
+      raw: normalized,
+    };
+  }
+}
+
+function parseStoredSentenceAnalysisMap(content?: string | null) {
+  const map = new Map<string, SentenceAnalysis>();
+  if (!content?.trim()) return map;
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return map;
+    Object.entries(parsed).forEach(([key, value]) => {
+      if (!value || typeof value !== "object") return;
+      const analysis = value as Partial<SentenceAnalysis>;
+      map.set(key, {
+        chunks: normalizeAnalysisItems(analysis.chunks),
+        grammar: normalizeAnalysisItems(analysis.grammar),
+        raw: typeof analysis.raw === "string" ? analysis.raw : undefined,
+      });
+    });
+  } catch {
+    return map;
+  }
+  return map;
+}
+
+function serializeSentenceAnalysisMap(map: Map<string, SentenceAnalysis>) {
+  return JSON.stringify(Object.fromEntries(map));
+}
+
+async function requestVocabularyAnalysis(apiUrl: string, token: string, text: string) {
+  const result = await sendChat(apiUrl, token, {
+    agentId: "reading-vocabulary-analyzer",
+    history: [],
+    instructions: [
+      "You are an English reading tutor for Korean middle and high school students.",
+      "Create vocabulary notes for the full English passage.",
+      "Return only JSON with key keyExpressionItems.",
+      "keyExpressionItems must be an array of objects with word, meaning, note.",
+      "word: English word or expression. meaning: Korean meaning. note: short Korean reading tip.",
+      "Select only vocabulary that helps comprehension. Do not include every word.",
+    ].join("\n"),
+    message: `다음 독해 지문 전체에 대한 단어 정리를 만들어줘:\n${text}`,
+  });
+  return parseVocabularyAnalysis(result.content);
+}
+
+function parseVocabularyAnalysis(content: string): VocabularyEntry[] {
+  const normalized = content.trim();
+  const jsonText = normalized.match(/```json\s*([\s\S]*?)```/)?.[1]
+    ?? normalized.match(/```\s*([\s\S]*?)```/)?.[1]
+    ?? normalized;
+  try {
+    const parsed = JSON.parse(jsonText) as { keyExpressionItems?: unknown; keyExpressionText?: unknown };
+    const entries = parseVocabularyEntries(parsed.keyExpressionItems);
+    if (entries.length > 0) return entries;
+    return parseVocabularyEntries(parsed.keyExpressionText);
+  } catch {
+    return parseLegacyVocabularyText(normalized);
+  }
+}
+
+function parseVocabularyEntries(value: unknown): VocabularyEntry[] {
+  if (!value) return [];
+  if (typeof value === "string") {
+    try {
+      return parseVocabularyEntries(JSON.parse(value));
+    } catch {
+      return [];
+    }
+  }
+  const rawItems = Array.isArray(value)
+    ? value
+    : typeof value === "object" && "items" in value
+      ? (value as { items?: unknown }).items
+      : [];
+  if (!Array.isArray(rawItems)) return [];
+  return rawItems
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const candidate = item as Partial<Record<keyof VocabularyEntry, unknown>>;
+      return {
+        word: typeof candidate.word === "string" ? candidate.word.trim() : "",
+        meaning: typeof candidate.meaning === "string" ? candidate.meaning.trim() : "",
+        note: typeof candidate.note === "string" ? candidate.note.trim() : "",
+      };
+    })
+    .filter((entry): entry is VocabularyEntry => Boolean(entry && (entry.word || entry.meaning || entry.note)));
+}
+
+function parseLegacyVocabularyText(text: string): VocabularyEntry[] {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/^[-*\s]+/, "").trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [wordPart, rest = ""] = line.split(/[:：]|—|–|-/, 2).map((part) => part.trim());
+      return { word: wordPart, meaning: rest, note: "" };
+    })
+    .filter((entry) => entry.word || entry.meaning);
+}
+
+function normalizeAnalysisItems(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => typeof item === "string" ? item : JSON.stringify(item))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
 }
 
 function SimpleView({ title, description, icon: Icon }: { title: string; description: string; icon: WebMenu["icon"] }) {
@@ -938,6 +1510,10 @@ function formFromMaterial(material: ReadingMaterial): ReadingMaterialUpsertReque
     sourceUrl: material.sourceUrl ?? "",
     originalText: material.originalText,
     translationText: material.translationText ?? "",
+    chunkAnalysisText: material.chunkAnalysisText ?? "",
+    grammarAnalysisText: material.grammarAnalysisText ?? "",
+    keyExpressionText: material.keyExpressionText ?? "",
+    sentenceAnalysisText: material.sentenceAnalysisText ?? "",
     collectedDate: material.collectedDate,
   };
 }
@@ -973,8 +1549,4 @@ function useLearningQueue() {
   };
 
   return [queue, setQueue] as const;
-}
-
-function extractKeywords(text: string) {
-  return Array.from(new Set(text.match(/\b[A-Za-z][A-Za-z-]{5,}\b/g) ?? [])).slice(0, 12);
 }

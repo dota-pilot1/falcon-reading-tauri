@@ -9,6 +9,8 @@ import type {
   ReadingMaterialUpsertRequest,
   ReadingSourceType,
   ReadingTreeResponse,
+  ReadingVocabularyItem,
+  ReadingVocabularyItemUpsertRequest,
 } from "../model/types";
 
 type ListParams = {
@@ -82,6 +84,37 @@ export async function updateReadingMaterial(apiUrl: string, token: string, id: s
   });
   if (!response.ok) throw new Error(await parseError(response));
   return (await response.json()) as ReadingMaterial;
+}
+
+export async function fetchReadingVocabulary(apiUrl: string, token: string) {
+  const response = await apiFetch(`${apiUrl}/api/reading-materials/vocabulary`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) throw new Error(await parseError(response));
+  return (await response.json()) as ReadingVocabularyItem[];
+}
+
+export async function fetchReadingMaterialVocabulary(apiUrl: string, token: string, materialId: string) {
+  const response = await apiFetch(`${apiUrl}/api/reading-materials/${materialId}/vocabulary`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) throw new Error(await parseError(response));
+  return (await response.json()) as ReadingVocabularyItem[];
+}
+
+export async function replaceReadingMaterialVocabulary(
+  apiUrl: string,
+  token: string,
+  materialId: string,
+  body: ReadingVocabularyItemUpsertRequest[],
+) {
+  const response = await apiFetch(`${apiUrl}/api/reading-materials/${materialId}/vocabulary`, {
+    method: "PUT",
+    headers: jsonAuthHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await parseError(response));
+  return (await response.json()) as ReadingVocabularyItem[];
 }
 
 export async function fetchReadingFolders(apiUrl: string, token: string) {

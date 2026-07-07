@@ -24,6 +24,10 @@ export type ReadingMaterial = {
   sourceUrl: string | null;
   originalText: string;
   translationText: string | null;
+  chunkAnalysisText: string | null;
+  grammarAnalysisText: string | null;
+  keyExpressionText: string | null;
+  sentenceAnalysisText: string | null;
   collectedDate: string;
   wordCount: number;
   estimatedMinutes: number;
@@ -40,7 +44,31 @@ export type ReadingMaterialUpsertRequest = {
   sourceUrl: string;
   originalText: string;
   translationText: string;
+  chunkAnalysisText: string;
+  grammarAnalysisText: string;
+  keyExpressionText: string;
+  sentenceAnalysisText: string;
   collectedDate: string;
+};
+
+export type ReadingVocabularyItem = {
+  id: number;
+  materialId: string;
+  materialTitle: string;
+  word: string;
+  meaning: string;
+  note: string | null;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReadingVocabularyItemUpsertRequest = {
+  id?: number | null;
+  word: string;
+  meaning: string;
+  note: string;
+  displayOrder: number;
 };
 
 export type ReadingFolderCreateRequest = {

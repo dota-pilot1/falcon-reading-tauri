@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReadingTreeFilter } from "../../../entities/reading-material";
-import { fetchReadingMaterials, fetchReadingTree } from "../../../entities/reading-material/api/readingMaterialApi";
+import { fetchReadingMaterialVocabulary, fetchReadingMaterials, fetchReadingTree } from "../../../entities/reading-material/api/readingMaterialApi";
 
 function paramsFromFilter(filter: ReadingTreeFilter) {
   if (filter.kind === "folder") return { folderId: filter.folderId };
@@ -15,6 +15,8 @@ export const readingMaterialQueryKeys = {
   tree: (apiUrl: string) => ["reading-materials", apiUrl, "tree"] as const,
   materialsRoot: (apiUrl: string) => ["reading-materials", apiUrl, "materials"] as const,
   materials: (apiUrl: string, filter: ReadingTreeFilter) => ["reading-materials", apiUrl, "materials", filter] as const,
+  vocabularyRoot: (apiUrl: string) => ["reading-materials", apiUrl, "vocabulary"] as const,
+  materialVocabulary: (apiUrl: string, materialId: string) => ["reading-materials", apiUrl, "vocabulary", materialId] as const,
 };
 
 export function useReadingTreeQuery(apiUrl: string, token: string) {
@@ -36,6 +38,14 @@ export function useReadingMaterialsQuery(apiUrl: string, token: string, filter: 
   });
 }
 
+export function useReadingMaterialVocabularyQuery(apiUrl: string, token: string, materialId: string | null) {
+  return useQuery({
+    queryKey: readingMaterialQueryKeys.materialVocabulary(apiUrl, materialId ?? "none"),
+    queryFn: () => fetchReadingMaterialVocabulary(apiUrl, token, materialId ?? ""),
+    enabled: token.trim().length > 0 && Boolean(materialId),
+  });
+}
+
 export function useInvalidateReadingMaterials(apiUrl: string) {
   const queryClient = useQueryClient();
 
@@ -43,5 +53,6 @@ export function useInvalidateReadingMaterials(apiUrl: string) {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.tree(apiUrl) }),
       queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.materialsRoot(apiUrl) }),
+      queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.vocabularyRoot(apiUrl) }),
     ]);
 }

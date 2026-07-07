@@ -1010,7 +1010,7 @@ dependencies = [
 
 [[package]]
 name = "falcon-reading-tauri"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "serde",
  "serde_json",
