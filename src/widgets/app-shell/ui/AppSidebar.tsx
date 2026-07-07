@@ -58,7 +58,7 @@ export function AppSidebar({
   return (
     <aside className="app-sidebar">
       <div className="sidebar-brand">
-        <button className="sidebar-brand-mark" onClick={() => onOpenMenu("home")} title="Falcon English">
+        <button className="sidebar-brand-mark" onClick={() => onOpenMenu("readingMaterials")} title="Falcon Reading">
           <Zap size={19} />
         </button>
       </div>

@@ -2,6 +2,7 @@ import { apiFetch } from "../../../shared/api/client";
 import type {
   ReadingFolder,
   ReadingFolderCreateRequest,
+  ReadingFolderRenameRequest,
   ReadingFolderReorderRequest,
   ReadingMaterial,
   ReadingMaterialStatus,
@@ -101,6 +102,16 @@ export async function createReadingFolder(apiUrl: string, token: string, body: R
   return (await response.json()) as ReadingFolder;
 }
 
+export async function renameReadingFolder(apiUrl: string, token: string, id: number, body: ReadingFolderRenameRequest) {
+  const response = await apiFetch(`${apiUrl}/api/reading-folders/${id}`, {
+    method: "PUT",
+    headers: jsonAuthHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await parseError(response));
+  return (await response.json()) as ReadingFolder;
+}
+
 export async function reorderReadingFolders(apiUrl: string, token: string, body: ReadingFolderReorderRequest) {
   const response = await apiFetch(`${apiUrl}/api/reading-folders/reorder`, {
     method: "PUT",
@@ -109,4 +120,12 @@ export async function reorderReadingFolders(apiUrl: string, token: string, body:
   });
   if (!response.ok) throw new Error(await parseError(response));
   return (await response.json()) as ReadingFolder[];
+}
+
+export async function deleteReadingFolder(apiUrl: string, token: string, id: number) {
+  const response = await apiFetch(`${apiUrl}/api/reading-folders/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!response.ok) throw new Error(await parseError(response));
 }

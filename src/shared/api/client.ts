@@ -1,7 +1,8 @@
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 export const defaultApiUrl =
-  "http://localhost:3301";
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.DEV ? "http://localhost:3301" : "https://dxline-tallent.com");
 
 export const unauthorizedEventName = "auth:unauthorized";
 

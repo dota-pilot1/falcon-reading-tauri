@@ -15,9 +15,13 @@ export function AppTopbar({ activeWebMenu }: AppTopbarProps) {
     if (event.button !== 0) return;
     void win.startDragging();
   };
+  const handleDoubleClick = (event: MouseEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest(".window-controls")) return;
+    void win.toggleMaximize();
+  };
 
   return (
-    <header className="topbar" onMouseDown={handleDragStart}>
+    <header className="topbar" onMouseDown={handleDragStart} onDoubleClick={handleDoubleClick}>
       <div className="brand compact">
         <div className="brand-mark">
           <ActiveWebMenuIcon size={18} />

@@ -46,6 +46,10 @@ export type ReadingFolderCreateRequest = {
   name: string;
 };
 
+export type ReadingFolderRenameRequest = {
+  name: string;
+};
+
 export type ReadingFolderReorderRequest = {
   parentId: number | null;
   orderedIds: number[];

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default permissions for Falcon English",
+  "description": "Default permissions for Falcon Reading",
   "windows": ["main"],
   "permissions": [
     "core:default",

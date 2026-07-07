@@ -1,17 +1,12 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  BookOpenText,
   CheckCircle2,
   CircleAlert,
-  Clock,
-  FileText,
   Link,
   Plus,
   Save,
-  Sparkles,
-  Zap,
 } from "lucide-react";
-import { WEB_HEADER_MENUS, PROFILE_MENU, canAccessMenu, type WebMenu, type WebMenuId } from "./model/navigation";
+import { WEB_HEADER_MENUS, PROFILE_MENU, SETTINGS_MENU, canAccessMenu, type WebMenu, type WebMenuId } from "./model/navigation";
 import { LoginScreen } from "../features/auth/login/LoginScreen";
 import { login, logout, signup } from "../features/auth/api/authApi";
 import { useAuthSession } from "../features/auth/model/useAuthSession";
@@ -32,17 +27,19 @@ import {
   type ReadingTreeResponse,
   type ReadingTreeSection,
 } from "../entities/reading-material";
-import { ReadingMaterialTreePanel, type FolderContextState } from "../features/reading-materials/ui/ReadingMaterialTreePanel";
+import { ReadingMaterialTreePanel, type FolderDialogState } from "../features/reading-materials/ui/ReadingMaterialTreePanel";
 import {
   createReadingFolder,
   createReadingMaterial,
+  deleteReadingFolder,
   fetchReadingMaterials,
   fetchReadingTree,
+  renameReadingFolder,
   reorderReadingFolders,
   updateReadingMaterial,
 } from "../entities/reading-material/api/readingMaterialApi";
 
-const appVersion = "0.1.15";
+const appVersion = "0.1.16";
 
 type ConnectionStatus = "checking" | "online" | "offline";
 
@@ -125,23 +122,14 @@ function visibleNodesForSection(section: ReadingTreeSection, collapsedFolders: S
   return section.nodes.filter((node) => !hasCollapsedAncestor(node));
 }
 
-function formatSavedAt(value: string) {
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
 export function App() {
   const apiUrl = defaultApiUrl;
   const { token, user, setToken, setRefreshToken, setUser } = useAuthSession();
-  const [activeMenu, setActiveMenu] = useState<WebMenuId>("home");
+  const [activeMenu, setActiveMenu] = useState<WebMenuId>("readingMaterials");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("checking");
   const isLoggedIn = token.trim().length > 0 && user !== null;
   const activeWebMenu = useMemo(
-    () => [...WEB_HEADER_MENUS, PROFILE_MENU].find((menu) => menu.id === activeMenu) ?? WEB_HEADER_MENUS[0],
+    () => [...WEB_HEADER_MENUS, PROFILE_MENU, SETTINGS_MENU].find((menu) => menu.id === activeMenu) ?? WEB_HEADER_MENUS[0],
     [activeMenu]
   );
   const canAccessActiveMenu = canAccessMenu(user, activeMenu);
@@ -151,7 +139,7 @@ export function App() {
       setToken("");
       setRefreshToken("");
       setUser(null);
-      setActiveMenu("home");
+      setActiveMenu("readingMaterials");
     };
     window.addEventListener(unauthorizedEventName, clearExpiredSession);
     return () => window.removeEventListener(unauthorizedEventName, clearExpiredSession);
@@ -177,7 +165,7 @@ export function App() {
     setToken(data.accessToken);
     setRefreshToken(data.refreshToken);
     setUser(data.user);
-    setActiveMenu("home");
+    setActiveMenu("readingMaterials");
   };
 
   const handleSignup = async (email: string, username: string, password: string) => {
@@ -189,7 +177,7 @@ export function App() {
     setToken("");
     setRefreshToken("");
     setUser(null);
-    setActiveMenu("home");
+    setActiveMenu("readingMaterials");
   };
 
   const openMenu = (menu: WebMenuId) => {
@@ -227,83 +215,10 @@ export function App() {
 }
 
 function FalconWorkspace({ activeMenu, userName, apiUrl, token }: { activeMenu: WebMenuId; userName: string; apiUrl: string; token: string }) {
-  if (activeMenu === "home") return <HomeView userName={userName} apiUrl={apiUrl} token={token} />;
   if (activeMenu === "readingMaterials") return <ReadingMaterialsView apiUrl={apiUrl} token={token} />;
   if (activeMenu === "profile") return <ProfileView userName={userName} />;
   if (activeMenu === "settings") return <SettingsView />;
-  return <HomeView userName={userName} apiUrl={apiUrl} token={token} />;
-}
-
-function HomeView({ userName, apiUrl, token }: { userName: string; apiUrl: string; token: string }) {
-  const [materials, setMaterials] = useState<ReadingMaterial[]>([]);
-  const [error, setError] = useState("");
-  const readyCount = materials.filter((item) => item.status === "READY").length;
-  const pendingCount = materials.filter((item) => item.status !== "READY").length;
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetchReadingMaterials(apiUrl, token)
-      .then((items) => {
-        if (!cancelled) setMaterials(items);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "독해 자료를 불러오지 못했습니다.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [apiUrl, token]);
-
-  return (
-    <section className="falcon-view">
-      <div className="falcon-inner">
-        <header className="falcon-hero">
-          <div>
-            <span className="falcon-kicker"><Zap size={15} /> Falcon English</span>
-            <h1>독해 자료를 학습 가능한 형태로 정리합니다</h1>
-            <p>{userName}님의 영어 독해 자료를 모으고, 문장·단어·퀴즈 단위로 분석할 준비를 합니다.</p>
-          </div>
-          <div className="falcon-stats">
-            <FalconStat icon={FileText} label="저장 자료" value={String(materials.length)} />
-            <FalconStat icon={Sparkles} label="분석 대기" value={String(pendingCount)} />
-            <FalconStat icon={CheckCircle2} label="학습 가능" value={String(readyCount)} />
-          </div>
-        </header>
-
-        <div className="material-home-layout">
-          <section className="material-home-main">
-            <div className="falcon-section-head">
-              <div>
-                <h2>최근 저장한 자료</h2>
-                <p>자료를 먼저 쌓아야 오늘 학습, 복습, 단어장이 의미 있게 작동합니다.</p>
-              </div>
-              <Button type="button"><Plus size={16} /> 새 자료 추가</Button>
-            </div>
-            <div className="recent-material-list">
-              {error ? <div className="material-empty">{error}</div> : null}
-              {!error && materials.length === 0 ? <div className="material-empty">아직 저장된 독해 자료가 없습니다.</div> : null}
-              {materials.slice(0, 5).map((material) => (
-                <MaterialRow key={material.id} material={material} />
-              ))}
-            </div>
-          </section>
-
-          <aside className="material-home-side">
-            <div className="panel-title">
-              <strong>자료화 파이프라인</strong>
-              <Clock size={16} />
-            </div>
-            <div className="pipeline-list">
-              <PipelineStep title="1. 원문 저장" body="출처 URL과 본문을 함께 저장합니다." />
-              <PipelineStep title="2. 문장 분리" body="학습 가능한 문장 단위로 쪼갭니다." />
-              <PipelineStep title="3. 단어 추출" body="반복 학습할 핵심 어휘를 선별합니다." />
-              <PipelineStep title="4. 퀴즈 생성" body="내용 이해 문제로 학습 가능 상태를 만듭니다." />
-            </div>
-          </aside>
-        </div>
-      </div>
-    </section>
-  );
+  return <ReadingMaterialsView apiUrl={apiUrl} token={token} />;
 }
 
 const emptyForm: ReadingMaterialUpsertRequest = {
@@ -346,10 +261,14 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(() => new Set());
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [form, setForm] = useState<ReadingMaterialUpsertRequest>(emptyForm);
-  const [newFolderName, setNewFolderName] = useState("");
+  const [folderDraftName, setFolderDraftName] = useState("");
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
-  const [contextFolder, setContextFolder] = useState<FolderContextState | null>(null);
+  const [folderDialog, setFolderDialog] = useState<FolderDialogState | null>(null);
+  const [folderManagementOpen, setFolderManagementOpen] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [savingFolder, setSavingFolder] = useState(false);
+  const [deletingFolder, setDeletingFolder] = useState(false);
+  const [refreshingTree, setRefreshingTree] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const treeSections = useMemo(() => (tree ? buildTreeSections(tree) : []), [tree]);
@@ -387,11 +306,17 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     setForm(items[0] ? formFromMaterial(items[0]) : emptyForm);
   };
 
-  useEffect(() => {
-    const closeContextMenu = () => setContextFolder(null);
-    window.addEventListener("click", closeContextMenu);
-    return () => window.removeEventListener("click", closeContextMenu);
-  }, []);
+  const refreshReadingWorkspace = async () => {
+    setRefreshingTree(true);
+    setError("");
+    try {
+      await Promise.all([reloadTree(), reloadMaterials(activeFilter)]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "자료 트리를 새로고침하지 못했습니다.");
+    } finally {
+      setRefreshingTree(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -437,32 +362,41 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     });
   };
 
-  const openRootContext = (x: number, y: number) => {
-    setContextFolder({
+  const openCreateRootFolder = () => {
+    setFolderDialog({
+      mode: "create",
       folderId: null,
       parentId: null,
       name: "루트 폴더",
-      x,
-      y,
     });
-    setNewFolderName("");
+    setFolderDraftName("");
   };
 
-  const openFolderContext = (event: MouseEvent, node: ReadingTreeSection["nodes"][number]) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (node.filter.kind !== "folder") {
-      openRootContext(event.clientX, event.clientY);
-      return;
-    }
-    setContextFolder({
+  const openCreateChildFolder = (node: ReadingTreeSection["nodes"][number]) => {
+    if (node.filter.kind !== "folder") return;
+    setFolderDialog({
+      mode: "create",
+      folderId: null,
+      parentId: node.filter.folderId,
+      name: `${node.label} 하위 폴더`,
+    });
+    setFolderDraftName("");
+  };
+
+  const openEditFolder = (node: ReadingTreeSection["nodes"][number]) => {
+    if (node.filter.kind !== "folder") return;
+    setFolderDialog({
+      mode: "edit",
       folderId: node.filter.folderId,
       parentId: node.parentFolderId ?? null,
       name: node.label,
-      x: event.clientX,
-      y: event.clientY,
     });
-    setNewFolderName("");
+    setFolderDraftName(node.label);
+  };
+
+  const closeFolderDialog = () => {
+    setFolderDialog(null);
+    setFolderDraftName("");
   };
 
   const selectMaterial = (material: ReadingMaterial) => {
@@ -485,46 +419,94 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     setMaterialDialogOpen(true);
   };
 
-  const createFolder = async (parentIdOverride?: number | null) => {
-    const name = newFolderName.trim();
+  const saveFolder = async () => {
+    if (!folderDialog) return;
+    const name = folderDraftName.trim();
     if (!name) {
-      setError("새 폴더 이름을 입력하세요.");
+      setError("폴더 이름을 입력하세요.");
       return;
     }
-    setCreatingFolder(true);
     setError("");
+    if (folderDialog.mode === "create") {
+      setCreatingFolder(true);
+      try {
+        const folder = await createReadingFolder(apiUrl, token, {
+          name,
+          parentId: folderDialog.parentId,
+        });
+        const nextTree = await fetchReadingTree(apiUrl, token);
+        setTree(nextTree);
+        closeFolderDialog();
+        setActiveTreeId(`folder:${folder.id}`);
+        await reloadMaterials({ kind: "folder", folderId: folder.id });
+        setForm((prev) => ({ ...prev, folderId: folder.id }));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "폴더 생성에 실패했습니다.");
+      } finally {
+        setCreatingFolder(false);
+      }
+      return;
+    }
+
+    if (folderDialog.folderId === null) return;
+    setSavingFolder(true);
     try {
-      const contextParentId = contextFolder?.folderId ?? contextFolder?.parentId ?? null;
-      const folder = await createReadingFolder(apiUrl, token, {
-        name,
-        parentId: parentIdOverride !== undefined ? parentIdOverride : contextParentId,
-      });
-      const nextTree = await fetchReadingTree(apiUrl, token);
-      setTree(nextTree);
-      setNewFolderName("");
-      setContextFolder(null);
-      setActiveTreeId(`folder:${folder.id}`);
-      await reloadMaterials({ kind: "folder", folderId: folder.id });
-      setForm((prev) => ({ ...prev, folderId: folder.id }));
+      const renamedFolder = await renameReadingFolder(apiUrl, token, folderDialog.folderId, { name });
+      setTree((prev) =>
+        prev
+          ? {
+              ...prev,
+              folders: prev.folders.map((folder) => (folder.id === renamedFolder.id ? renamedFolder : folder)),
+            }
+          : prev
+      );
+      await reloadTree();
+      closeFolderDialog();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "폴더 생성에 실패했습니다.");
+      setError(err instanceof Error ? err.message : "폴더 수정에 실패했습니다.");
     } finally {
-      setCreatingFolder(false);
+      setSavingFolder(false);
     }
   };
 
-  const moveContextFolder = async (direction: -1 | 1) => {
-    if (!contextFolder?.folderId || !tree) return;
-    const target = tree.folders.find((folder) => folder.id === contextFolder.folderId);
-    if (!target) return;
+  const deleteFolder = async (node?: ReadingTreeSection["nodes"][number]) => {
+    const folderId = node?.filter.kind === "folder" ? node.filter.folderId : folderDialog?.folderId;
+    if (!folderId) return;
+    setDeletingFolder(true);
+    setError("");
+    try {
+      await deleteReadingFolder(apiUrl, token, folderId);
+      await reloadTree();
+      if (activeTreeId === `folder:${folderId}`) {
+        setActiveTreeId("all");
+        await reloadMaterials({ kind: "all" });
+      }
+      closeFolderDialog();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "폴더 삭제에 실패했습니다.");
+    } finally {
+      setDeletingFolder(false);
+    }
+  };
+
+  const reorderFolder = async (activeFolderId: number, overFolderId: number) => {
+    if (!tree) return;
+    const target = tree.folders.find((folder) => folder.id === activeFolderId);
+    const over = tree.folders.find((folder) => folder.id === overFolderId);
+    if (!target || !over || target.parentId !== over.parentId) {
+      setError("같은 부모 폴더 안에서만 순서를 바꿀 수 있습니다.");
+      return;
+    }
     const siblings = tree.folders
       .filter((folder) => folder.parentId === target.parentId)
       .sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
     const currentIndex = siblings.findIndex((folder) => folder.id === target.id);
-    const nextIndex = currentIndex + direction;
+    const nextIndex = siblings.findIndex((folder) => folder.id === over.id);
+    if (!target) return;
     if (currentIndex < 0 || nextIndex < 0 || nextIndex >= siblings.length) return;
     const reordered = [...siblings];
-    [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(nextIndex, 0, moved);
     setError("");
     try {
       await reorderReadingFolders(apiUrl, token, {
@@ -532,7 +514,6 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
         orderedIds: reordered.map((folder) => folder.id),
       });
       await reloadTree();
-      setContextFolder(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "폴더 순서 변경에 실패했습니다.");
     }
@@ -579,17 +560,27 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
             activeTreeId={activeTreeId}
             collapsedSections={collapsedSections}
             collapsedFolders={collapsedFolders}
-            contextFolder={contextFolder}
-            newFolderName={newFolderName}
+            folderDialog={folderDialog}
+            folderManagementOpen={folderManagementOpen}
+            folderDraftName={folderDraftName}
             creatingFolder={creatingFolder}
-            onOpenRootContext={openRootContext}
-            onOpenFolderContext={openFolderContext}
+            savingFolder={savingFolder}
+            deletingFolder={deletingFolder}
+            refreshing={refreshingTree}
+            onOpenCreateRoot={openCreateRootFolder}
+            onRefresh={() => void refreshReadingWorkspace()}
+            onOpenCreateChild={openCreateChildFolder}
+            onOpenEditFolder={openEditFolder}
+            onOpenFolderManagement={() => setFolderManagementOpen(true)}
+            onCloseFolderManagement={() => setFolderManagementOpen(false)}
+            onCloseFolderDialog={closeFolderDialog}
             onSelect={selectTreeNode}
             onToggleSection={toggleSection}
             onToggleFolder={toggleFolder}
-            onChangeNewFolderName={setNewFolderName}
-            onCreateFolder={() => void createFolder()}
-            onMoveFolder={(direction) => void moveContextFolder(direction)}
+            onChangeFolderDraftName={setFolderDraftName}
+            onSaveFolder={() => void saveFolder()}
+            onDeleteFolder={(node) => void deleteFolder(node)}
+            onReorderFolder={(activeFolderId, overFolderId) => void reorderFolder(activeFolderId, overFolderId)}
           />
 
           <main className="material-editor-panel">
@@ -713,18 +704,6 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   );
 }
 
-function MaterialRow({ material }: { material: ReadingMaterial }) {
-  return (
-    <article className="material-row">
-      <div>
-        <strong>{material.title}</strong>
-        <span>{sourceTypeLabels[material.sourceType]} · {material.level} · {formatSavedAt(material.createdAt)}</span>
-      </div>
-      <MaterialStatus status={material.status} />
-    </article>
-  );
-}
-
 function MaterialCard({ material, active, onSelect }: { material: ReadingMaterial; active: boolean; onSelect: () => void }) {
   return (
     <button className={`material-card ${active ? "active" : ""}`} type="button" onClick={onSelect}>
@@ -740,21 +719,12 @@ function MaterialStatus({ status }: { status: ReadingMaterial["status"] }) {
   return <em className={`material-status ${status === "READY" ? "ready" : status === "ANALYSIS_PENDING" ? "pending" : "raw"}`}>{statusLabels[status]}</em>;
 }
 
-function PipelineStep({ title, body }: { title: string; body: string }) {
-  return (
-    <article className="pipeline-step">
-      <strong>{title}</strong>
-      <span>{body}</span>
-    </article>
-  );
-}
-
 function ProfileView({ userName }: { userName: string }) {
   return (
     <SimpleGridView
       title="프로필"
-      description={`${userName} 계정으로 Falcon English에 로그인되어 있습니다.`}
-      items={["학습 서버 연결", "계정 정보", "개인 자료 보관함", "앱 버전 v0.1.15"]}
+      description={`${userName} 계정으로 Falcon Reading에 로그인되어 있습니다.`}
+      items={["학습 서버 연결", "계정 정보", "개인 자료 보관함", "앱 버전 v0.1.16"]}
     />
   );
 }
@@ -789,15 +759,6 @@ function SimpleGridView({ title, description, items }: { title: string; descript
         </div>
       </div>
     </section>
-  );
-}
-
-function FalconStat({ icon: Icon, label, value }: { icon: typeof BookOpenText; label: string; value: string }) {
-  return (
-    <div className="falcon-stat">
-      <span><Icon size={14} /> {label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 

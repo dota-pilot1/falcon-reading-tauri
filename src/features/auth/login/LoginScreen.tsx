@@ -132,7 +132,7 @@ export function LoginScreen({ onLogin, onSignup }: LoginScreenProps) {
             <Zap size={18} />
           </div>
           <div>
-            <strong>Falcon English</strong>
+            <strong>Falcon Reading</strong>
           </div>
         </div>
         <WindowControls />
@@ -303,7 +303,7 @@ export function LoginScreen({ onLogin, onSignup }: LoginScreenProps) {
                 <div className="app-preview-top">
                   <div>
                     <strong>오늘의 학습</strong>
-                    <span>Falcon English</span>
+                    <span>Falcon Reading</span>
                   </div>
                   <i />
                 </div>

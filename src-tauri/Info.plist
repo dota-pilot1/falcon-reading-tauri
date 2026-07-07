@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Falcon English uses the microphone for listening, dictation, and speaking practice.</string>
+  <string>Falcon Reading uses the microphone for listening, dictation, and speaking practice.</string>
 </dict>
 </plist>

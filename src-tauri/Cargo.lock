@@ -1009,8 +1009,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "falcon-english-tauri"
-version = "0.1.15"
+name = "falcon-reading-tauri"
+version = "0.1.16"
 dependencies = [
  "serde",
  "serde_json",

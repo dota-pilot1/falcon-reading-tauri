@@ -1,6 +1,6 @@
 #[tauri::command]
 fn app_info() -> &'static str {
-    "Falcon English desktop"
+    "Falcon Reading desktop"
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -18,5 +18,5 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![app_info])
         .run(tauri::generate_context!())
-        .expect("error while running Falcon English");
+        .expect("error while running Falcon Reading");
 }

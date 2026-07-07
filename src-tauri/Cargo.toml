@@ -1,12 +1,12 @@
 [package]
-name = "falcon-english-tauri"
-version = "0.1.15"
-description = "Falcon English desktop app"
-authors = ["Falcon English"]
+name = "falcon-reading-tauri"
+version = "0.1.16"
+description = "Falcon Reading desktop app"
+authors = ["Falcon Reading"]
 edition = "2021"
 
 [lib]
-name = "falcon_english_tauri_lib"
+name = "falcon_reading_tauri_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

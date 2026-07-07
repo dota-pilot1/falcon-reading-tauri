@@ -57,7 +57,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Falcon English ${{ github.ref_name }}"
+          releaseName: "Falcon Reading ${{ github.ref_name }}"
           releaseBody: "자동 빌드된 릴리스입니다. macOS는 .dmg, Windows는 .exe 설치 파일을 받아 설치하세요."
           releaseDraft: false
           prerelease: false
