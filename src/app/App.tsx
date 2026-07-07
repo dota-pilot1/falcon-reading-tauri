@@ -1,5 +1,4 @@
-import { getVersion } from "@tauri-apps/api/app";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, type ReactNode } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef } from "ag-grid-community";
 import {
@@ -25,6 +24,7 @@ import { Select } from "../shared/ui/Select";
 import { Dialog, DialogContent } from "../shared/ui/Dialog";
 import { Badge } from "../shared/ui/Badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/Tabs";
+import { AppUpdatePanel } from "../shared/ui/AppUpdatePanel";
 import { LoginScreen } from "../features/auth/login/LoginScreen";
 import { login, logout, signup } from "../features/auth/api/authApi";
 import { useAuthSession } from "../features/auth/model/useAuthSession";
@@ -65,8 +65,10 @@ import {
   useReadingTreeQuery,
   useReadingVocabularyQuery,
 } from "../features/reading-materials/model/useReadingMaterialQueries";
+import { useAppUpdate } from "../shared/lib/useAppUpdate";
 
 type ConnectionStatus = "checking" | "online" | "offline";
+type AppUpdateControls = ReturnType<typeof useAppUpdate>;
 type SentenceAnalysis = {
   chunks: string[];
   grammar: string[];
@@ -121,6 +123,7 @@ type VocabularyFilterSection = {
 };
 
 const LEARNING_QUEUE_KEY = "falcon-reading:learning-queue";
+const appVersion = "0.1.16";
 const fallbackUser = {
   id: 0,
   email: "local@falcon.reading",
@@ -165,11 +168,8 @@ export function App() {
   const { token, user, setToken, setRefreshToken, setUser } = useAuthSession();
   const [activeMenu, setActiveMenu] = useState<WebMenuId>("readingVocabulary");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("checking");
-  const [appVersion, setAppVersion] = useState("0.1.16");
-
-  useEffect(() => {
-    void getVersion().then(setAppVersion).catch(() => undefined);
-  }, []);
+  const appUpdate = useAppUpdate(appVersion);
+  const isLoggedIn = Boolean(token && user);
 
   useEffect(() => {
     const handleUnauthorized = () => {
@@ -191,6 +191,10 @@ export function App() {
       .then(() => setConnectionStatus("online"))
       .catch(() => setConnectionStatus("offline"));
   }, [apiUrl, token]);
+
+  useEffect(() => {
+    if (isLoggedIn) appUpdate.checkOnceOnStartup();
+  }, [appUpdate.checkOnceOnStartup, isLoggedIn]);
 
   const handleLogin = async (email: string, password: string) => {
     const result = await login(apiUrl, email, password);
@@ -228,13 +232,16 @@ export function App() {
         activeWebMenu={activeWebMenu}
         user={user ?? fallbackUser}
         connectionStatus={connectionStatus}
-        appVersion={appVersion}
+        appVersion={appUpdate.state.currentVersion}
+        updateState={appUpdate.state}
+        updateBusy={appUpdate.busy}
         onOpenMenu={openMenu}
+        onInstallUpdate={() => void appUpdate.installUpdate()}
         onLogout={() => void handleLogout()}
       />
       <div className="app-main">
         <AppTopbar activeWebMenu={activeWebMenu} activeMenu={activeMenu} />
-        <FalconWorkspace activeMenu={activeMenu} activeWebMenu={activeWebMenu} apiUrl={apiUrl} token={token} userName={user.username || user.email} />
+        <FalconWorkspace activeMenu={activeMenu} activeWebMenu={activeWebMenu} apiUrl={apiUrl} token={token} userName={user.username || user.email} appUpdate={appUpdate} />
       </div>
     </div>
   );
@@ -246,20 +253,22 @@ function FalconWorkspace({
   apiUrl,
   token,
   userName,
+  appUpdate,
 }: {
   activeMenu: WebMenuId;
   activeWebMenu: WebMenu;
   apiUrl: string;
   token: string;
   userName: string;
+  appUpdate: AppUpdateControls;
 }) {
   if (activeMenu === "readingMaterials") return <ReadingMaterialsView apiUrl={apiUrl} token={token} />;
   if (activeMenu === "readingVocabulary") return <ReadingVocabularyView apiUrl={apiUrl} token={token} />;
   if (activeMenu === "readingStudy") return <ReadingStudyView apiUrl={apiUrl} token={token} />;
   if (activeMenu === "profile") {
-    return <SimpleView title="프로필" description={`${userName} 계정으로 Falcon Reading에 로그인되어 있습니다.`} icon={activeWebMenu.icon} />;
+    return <ProfileView userName={userName} icon={activeWebMenu.icon} appUpdate={appUpdate} />;
   }
-  return <SimpleView title="설정" description="자료 저장, AI 해석, 서버 연결 같은 앱 환경을 관리합니다." icon={activeWebMenu.icon} />;
+  return <SimpleView title="설정" description="자료 저장, AI 해석, 서버 연결 같은 앱 환경을 관리합니다." icon={activeWebMenu.icon} items={["자료 저장", "AI 해석", "서버 연결", `앱 버전 v${appUpdate.state.currentVersion}`]} />;
 }
 
 function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string }) {
@@ -1964,7 +1973,37 @@ function normalizeAnalysisItems(value: unknown) {
   return [];
 }
 
-function SimpleView({ title, description, icon: Icon }: { title: string; description: string; icon: WebMenu["icon"] }) {
+function ProfileView({ userName, icon, appUpdate }: { userName: string; icon: WebMenu["icon"]; appUpdate: AppUpdateControls }) {
+  return (
+    <SimpleView
+      title="프로필"
+      description={`${userName} 계정으로 Falcon Reading에 로그인되어 있습니다.`}
+      icon={icon}
+      items={["학습 서버 연결", "계정 정보", "개인 자료 보관함", `앱 버전 v${appUpdate.state.currentVersion}`]}
+    >
+      <AppUpdatePanel
+        updateState={appUpdate.state}
+        busy={appUpdate.busy}
+        onCheckUpdate={() => void appUpdate.checkForUpdate()}
+        onInstallUpdate={() => void appUpdate.installUpdate()}
+      />
+    </SimpleView>
+  );
+}
+
+function SimpleView({
+  title,
+  description,
+  icon: Icon,
+  items = ["학습 서버 연결", "계정 정보", "개인 자료 보관함", `앱 버전 v${appVersion}`],
+  children,
+}: {
+  title: string;
+  description: string;
+  icon: WebMenu["icon"];
+  items?: string[];
+  children?: ReactNode;
+}) {
   return (
     <section className="falcon-view">
       <div className="falcon-inner">
@@ -1975,13 +2014,14 @@ function SimpleView({ title, description, icon: Icon }: { title: string; descrip
           </div>
         </header>
         <div className="simple-card-grid">
-          {["학습 서버 연결", "계정 정보", "개인 자료 보관함", "앱 버전 v0.1.16"].map((item) => (
+          {items.map((item) => (
             <article className="simple-card" key={item}>
               <Icon size={18} />
               <strong>{item}</strong>
             </article>
           ))}
         </div>
+        {children}
       </div>
     </section>
   );

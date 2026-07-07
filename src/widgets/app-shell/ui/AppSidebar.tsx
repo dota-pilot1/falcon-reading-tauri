@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, CircleAlert, Loader2, LogOut, Settings, UserCircle, Zap } from "lucide-react";
+import { CheckCircle2, CircleAlert, Download, Loader2, LogOut, Settings, UserCircle, Zap } from "lucide-react";
 import type { UserSummary } from "../../../entities/user/model/types";
 import type { WebMenu, WebMenuId } from "../../../app/model/navigation";
+import type { AppUpdateState } from "../../../shared/lib/useAppUpdate";
 
 type ConnectionStatus = "checking" | "online" | "offline";
 
@@ -12,7 +13,10 @@ type AppSidebarProps = {
   user: UserSummary;
   connectionStatus: ConnectionStatus;
   appVersion: string;
+  updateState?: AppUpdateState;
+  updateBusy?: boolean;
   onOpenMenu: (menu: WebMenuId) => void;
+  onInstallUpdate?: () => void;
   onLogout: () => void;
 };
 
@@ -22,7 +26,10 @@ export function AppSidebar({
   user,
   connectionStatus,
   appVersion,
+  updateState,
+  updateBusy = false,
   onOpenMenu,
+  onInstallUpdate,
   onLogout,
 }: AppSidebarProps) {
   const [accountOpen, setAccountOpen] = useState(false);
@@ -34,6 +41,7 @@ export function AppSidebar({
     online: "서버 연결됨",
     offline: "서버 연결 안 됨",
   } satisfies Record<ConnectionStatus, string>;
+  const showUpdateButton = updateState?.status === "available" || updateState?.status === "downloading";
 
   useEffect(() => {
     if (!accountOpen) return;
@@ -88,6 +96,18 @@ export function AppSidebar({
         <div className="sidebar-app-meta">
           <strong>v{appVersion}</strong>
         </div>
+        {showUpdateButton && (
+          <button
+            type="button"
+            className="sidebar-update-button"
+            onClick={onInstallUpdate}
+            disabled={updateBusy || !onInstallUpdate}
+            title={`새 버전 v${updateState?.availableVersion || ""} 설치`}
+          >
+            {updateState?.status === "downloading" ? <Loader2 className="spin" size={15} /> : <Download size={15} />}
+            <span>{updateState?.status === "downloading" ? `${updateState.progress}%` : "업데이트"}</span>
+          </button>
+        )}
         <div className="account-panel" ref={accountRef}>
           <button
             type="button"
