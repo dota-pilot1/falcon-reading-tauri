@@ -4,8 +4,12 @@ import { AgGridReact } from "ag-grid-react";
 import type { ColDef } from "ag-grid-community";
 import {
   BookOpenCheck,
+  CalendarDays,
   CheckSquare,
+  ChevronDown,
   FileText,
+  Folder,
+  FolderOpen,
   Languages,
   Link,
   Loader2,
@@ -59,6 +63,7 @@ import {
   useReadingMaterialVocabularyQuery,
   useReadingMaterialsQuery,
   useReadingTreeQuery,
+  useReadingVocabularyQuery,
 } from "../features/reading-materials/model/useReadingMaterialQueries";
 
 type ConnectionStatus = "checking" | "online" | "offline";
@@ -80,6 +85,39 @@ type VocabularyEntry = {
   word: string;
   meaning: string;
   note: string;
+};
+
+type VocabularyFilter =
+  | { kind: "all" }
+  | { kind: "material"; materialId: string }
+  | { kind: "folder"; folderId: number }
+  | { kind: "date"; date: string }
+  | { kind: "sourceType"; sourceType: ReadingSourceType }
+  | { kind: "status"; status: "missingMeaning" | "hasNote" | "duplicate" };
+
+type VocabularyGridRow = ReadingVocabularyItem & {
+  folderId: number | null;
+  folderName: string;
+  sourceType: ReadingSourceType | null;
+  level: ReadingMaterial["level"] | null;
+  materialStatus: ReadingMaterialStatus | null;
+  collectedDate: string;
+  duplicateCount: number;
+};
+
+type VocabularyFilterNode = {
+  id: string;
+  label: string;
+  count: number;
+  depth?: number;
+  parentFolderId?: number | null;
+  filter: VocabularyFilter;
+};
+
+type VocabularyFilterSection = {
+  id: string;
+  label: string;
+  nodes: VocabularyFilterNode[];
 };
 
 const LEARNING_QUEUE_KEY = "falcon-reading:learning-queue";
@@ -125,7 +163,7 @@ const statusOptions = Object.entries(statusLabels).map(([value, label]) => ({
 export function App() {
   const apiUrl = defaultApiUrl;
   const { token, user, setToken, setRefreshToken, setUser } = useAuthSession();
-  const [activeMenu, setActiveMenu] = useState<WebMenuId>("readingMaterials");
+  const [activeMenu, setActiveMenu] = useState<WebMenuId>("readingVocabulary");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("checking");
   const [appVersion, setAppVersion] = useState("0.1.16");
 
@@ -216,6 +254,7 @@ function FalconWorkspace({
   userName: string;
 }) {
   if (activeMenu === "readingMaterials") return <ReadingMaterialsView apiUrl={apiUrl} token={token} />;
+  if (activeMenu === "readingVocabulary") return <ReadingVocabularyView apiUrl={apiUrl} token={token} />;
   if (activeMenu === "readingStudy") return <ReadingStudyView apiUrl={apiUrl} token={token} />;
   if (activeMenu === "profile") {
     return <SimpleView title="프로필" description={`${userName} 계정으로 Falcon Reading에 로그인되어 있습니다.`} icon={activeWebMenu.icon} />;
@@ -232,6 +271,8 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const [selectedIds, setSelectedIds] = useState(() => new Set<string>());
   const [form, setForm] = useState<ReadingMaterialUpsertRequest>(emptyForm);
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [moveTargetFolderId, setMoveTargetFolderId] = useState("");
   const [folderDialog, setFolderDialog] = useState<FolderDialogState | null>(null);
   const [folderManagementOpen, setFolderManagementOpen] = useState(false);
   const [folderDraftName, setFolderDraftName] = useState("");
@@ -242,6 +283,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [savingFolder, setSavingFolder] = useState(false);
   const [deletingFolder, setDeletingFolder] = useState(false);
+  const [movingMaterials, setMovingMaterials] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [todayQueue, setTodayQueue] = useLearningQueue();
 
@@ -269,6 +311,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     [activeFolderId, folders],
   );
   const folderOptions = useMemo(() => buildFolderOptions(folders), [folders]);
+  const selectedMaterials = useMemo(() => materials.filter((material) => selectedIds.has(material.id)), [materials, selectedIds]);
   const { data: selectedVocabulary = [], isLoading: loadingSelectedVocabulary } = useReadingMaterialVocabularyQuery(apiUrl, token, selectedMaterialId);
   const refreshAll = async () => {
     setRefreshing(true);
@@ -454,8 +497,44 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
     setSelectedIds(new Set());
   };
 
+  const openMoveDialog = () => {
+    if (selectedMaterials.length === 0) return;
+    setMoveTargetFolderId(activeFolderId === null ? "" : String(activeFolderId));
+    setMoveDialogOpen(true);
+  };
+
+  const moveSelectedMaterials = async () => {
+    const folderId = Number(moveTargetFolderId);
+    if (!folderId || selectedMaterials.length === 0) return;
+    setMovingMaterials(true);
+    setError("");
+    try {
+      await Promise.all(
+        selectedMaterials.map((material) =>
+          updateReadingMaterial(apiUrl, token, material.id, {
+            ...formFromMaterial(material),
+            folderId,
+          }),
+        ),
+      );
+      setSelectedIds(new Set());
+      await invalidateReadingMaterials();
+      setActiveTreeId(`folder:${folderId}`);
+      setActiveFilter({ kind: "folder", folderId });
+      await Promise.all([
+        refetchTree(),
+        fetchReadingMaterials(apiUrl, token, { folderId }),
+      ]);
+      setMoveDialogOpen(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "선택한 자료를 이동하지 못했습니다.");
+    } finally {
+      setMovingMaterials(false);
+    }
+  };
+
   return (
-    <section className="falcon-view">
+    <section className="falcon-view material-page-view">
       <div className="falcon-inner">
         <header className="falcon-page-head">
           <div>
@@ -567,6 +646,9 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
                   <span>{materials.length}</span>
                 </strong>
                 <div className="material-inline-head-actions">
+                  <Button type="button" variant="outline" size="sm" onClick={openMoveDialog} disabled={selectedIds.size === 0}>
+                    <Folder size={14} /> 폴더 이동{selectedIds.size > 0 ? ` ${selectedIds.size}` : ""}
+                  </Button>
                   <Button type="button" variant={selectedIds.size > 0 ? "default" : "outline"} size="sm" onClick={assignSelectedToday} disabled={selectedIds.size === 0 && !selectedMaterialId}>
                     오늘의 학습{selectedIds.size > 0 ? ` ${selectedIds.size}` : ""}
                   </Button>
@@ -605,6 +687,18 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
             vocabularyLoading={loadingSelectedVocabulary}
             onSaveVocabulary={saveVocabulary}
             onSave={() => void saveMaterial()}
+          />
+        ) : null}
+
+        {moveDialogOpen ? (
+          <MoveMaterialsDialog
+            selectedMaterials={selectedMaterials}
+            folders={folders}
+            targetFolderId={moveTargetFolderId}
+            moving={movingMaterials}
+            onChangeTargetFolderId={setMoveTargetFolderId}
+            onClose={() => setMoveDialogOpen(false)}
+            onMove={() => void moveSelectedMaterials()}
           />
         ) : null}
       </div>
@@ -668,8 +762,8 @@ function MaterialDialog({
   };
 
   return (
-    <Dialog className="material-dialog-backdrop z-[80] bg-slate-950/30 p-8" onClose={onClose}>
-      <DialogContent className="material-dialog grid max-h-[calc(100vh-96px)] w-[min(1280px,calc(100vw-96px))] max-w-none overflow-auto rounded-[10px] border border-zinc-200 bg-white p-[18px] shadow-2xl">
+    <Dialog className="material-dialog-backdrop z-[80] bg-slate-950/30 p-4" onClose={onClose}>
+      <DialogContent className="material-dialog material-dialog-full max-w-none">
         <div className="editor-section-title">
           <div>
             <span>{selectedMaterialId ? "Saved Material" : "New Material"}</span>
@@ -680,86 +774,94 @@ function MaterialDialog({
           </button>
         </div>
 
-        <div className="material-form-grid">
-          <label>
-            제목
-            <input value={form.title} onChange={(event) => onChange((prev) => ({ ...prev, title: event.target.value }))} />
-          </label>
-          <div className="material-field">
-            자료 유형
-            <Select ariaLabel="자료 유형" value={form.sourceType} options={sourceTypeOptions} onChange={(sourceType) => onChange((prev) => ({ ...prev, sourceType }))} />
-          </div>
-          <div className="material-field">
-            난이도
-            <Select ariaLabel="난이도" value={form.level} options={readingLevelOptions} onChange={(level) => onChange((prev) => ({ ...prev, level }))} />
-          </div>
-          <label>
-            저장 날짜
-            <input value={form.collectedDate} onChange={(event) => onChange((prev) => ({ ...prev, collectedDate: event.target.value }))} />
-          </label>
-          <div className="material-field">
-            저장 폴더
-            <Select
-              ariaLabel="저장 폴더"
-              value={form.folderId === null ? "" : String(form.folderId)}
-              options={folderOptions}
-              onChange={(folderId) => onChange((prev) => ({ ...prev, folderId: folderId ? Number(folderId) : null }))}
-            />
-          </div>
-          <div className="material-field">
-            상태
-            <Select ariaLabel="상태" value={form.status} options={statusOptions} onChange={(status) => onChange((prev) => ({ ...prev, status }))} />
-          </div>
-          <label className="wide">
-            출처 URL
-            <div className="url-input">
-              <Link size={16} />
-              <input value={form.sourceUrl} onChange={(event) => onChange((prev) => ({ ...prev, sourceUrl: event.target.value }))} />
+        <div className="material-dialog-body">
+          <div className="material-dialog-main">
+            <div className="material-form-grid">
+              <label>
+                제목
+                <input value={form.title} onChange={(event) => onChange((prev) => ({ ...prev, title: event.target.value }))} />
+              </label>
+              <div className="material-field">
+                자료 유형
+                <Select ariaLabel="자료 유형" value={form.sourceType} options={sourceTypeOptions} onChange={(sourceType) => onChange((prev) => ({ ...prev, sourceType }))} />
+              </div>
+              <div className="material-field">
+                난이도
+                <Select ariaLabel="난이도" value={form.level} options={readingLevelOptions} onChange={(level) => onChange((prev) => ({ ...prev, level }))} />
+              </div>
+              <label>
+                저장 날짜
+                <input value={form.collectedDate} onChange={(event) => onChange((prev) => ({ ...prev, collectedDate: event.target.value }))} />
+              </label>
+              <div className="material-field">
+                저장 폴더
+                <Select
+                  ariaLabel="저장 폴더"
+                  value={form.folderId === null ? "" : String(form.folderId)}
+                  options={folderOptions}
+                  onChange={(folderId) => onChange((prev) => ({ ...prev, folderId: folderId ? Number(folderId) : null }))}
+                />
+              </div>
+              <div className="material-field">
+                상태
+                <Select ariaLabel="상태" value={form.status} options={statusOptions} onChange={(status) => onChange((prev) => ({ ...prev, status }))} />
+              </div>
+              <label className="wide">
+                출처 URL
+                <div className="url-input">
+                  <Link size={16} />
+                  <input value={form.sourceUrl} onChange={(event) => onChange((prev) => ({ ...prev, sourceUrl: event.target.value }))} />
+                </div>
+              </label>
+              <div className="material-text-pair wide">
+                <label>
+                  <span className="material-text-label-head">원문</span>
+                  <textarea value={form.originalText} onChange={(event) => onChange((prev) => ({ ...prev, originalText: event.target.value }))} />
+                </label>
+                <label>
+                  <span className="material-text-label-head">
+                    전체 해석
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="min-h-[30px] !border !border-slate-400 !bg-white px-2.5 text-xs font-extrabold !text-slate-700 shadow-none hover:!border-slate-500 hover:!bg-slate-50 hover:!text-zinc-900"
+                      onClick={onGenerateTranslation}
+                      disabled={translating || form.originalText.trim().length === 0}
+                    >
+                      {translating ? <Loader2 size={14} className="spin" /> : <Languages size={14} />}
+                      {translating ? "해석 중" : "AI 해석"}
+                    </Button>
+                  </span>
+                  <textarea
+                    value={form.translationText}
+                    placeholder="학습 화면의 전체 해석 탭에 표시할 한국어 해석을 입력하세요."
+                    onChange={(event) => onChange((prev) => ({ ...prev, translationText: event.target.value }))}
+                  />
+                </label>
+              </div>
             </div>
-          </label>
-          <div className="material-text-pair wide">
-            <label>
-              <span className="material-text-label-head">원문</span>
-              <textarea value={form.originalText} onChange={(event) => onChange((prev) => ({ ...prev, originalText: event.target.value }))} />
-            </label>
-            <label>
-              <span className="material-text-label-head">
-                전체 해석
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="min-h-[30px] !border !border-slate-400 !bg-white px-2.5 text-xs font-extrabold !text-slate-700 shadow-none hover:!border-slate-500 hover:!bg-slate-50 hover:!text-zinc-900"
-                  onClick={onGenerateTranslation}
-                  disabled={translating || form.originalText.trim().length === 0}
-                >
-                  {translating ? <Loader2 size={14} className="spin" /> : <Languages size={14} />}
-                  {translating ? "해석 중" : "AI 해석"}
-                </Button>
-              </span>
-              <textarea
-                value={form.translationText}
-                placeholder="학습 화면의 전체 해석 탭에 표시할 한국어 해석을 입력하세요."
-                onChange={(event) => onChange((prev) => ({ ...prev, translationText: event.target.value }))}
-              />
-            </label>
           </div>
-          <div className="wide flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
-            <strong className="text-sm font-black text-zinc-900">단어 정리</strong>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="min-h-[32px] !border !border-slate-400 !bg-white px-3 text-xs font-extrabold !text-slate-700 shadow-none hover:!border-slate-500 hover:!bg-slate-50 hover:!text-zinc-900"
-              onClick={() => void generateDialogVocabularyAnalysis()}
-              disabled={generatingVocabularyAnalysis || form.originalText.trim().length === 0}
-            >
-              {generatingVocabularyAnalysis ? <Loader2 size={14} className="spin" /> : <CheckSquare size={14} />}
-              {generatingVocabularyAnalysis ? "정리 중" : "단어 정리 AI"}
-            </Button>
-          </div>
-          {vocabularyAnalysisError ? <div className="folder-dialog-error wide">{vocabularyAnalysisError}</div> : null}
-          <div className="material-vocabulary-field wide">
+
+          <aside className="material-dialog-vocabulary-panel">
+            <div className="material-dialog-vocabulary-head">
+              <div>
+                <span>Vocabulary</span>
+                <strong>단어 정리</strong>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="min-h-[32px] !border !border-slate-400 !bg-white px-3 text-xs font-extrabold !text-slate-700 shadow-none hover:!border-slate-500 hover:!bg-slate-50 hover:!text-zinc-900"
+                onClick={() => void generateDialogVocabularyAnalysis()}
+                disabled={generatingVocabularyAnalysis || form.originalText.trim().length === 0}
+              >
+                {generatingVocabularyAnalysis ? <Loader2 size={14} className="spin" /> : <CheckSquare size={14} />}
+                {generatingVocabularyAnalysis ? "정리 중" : "단어 정리 AI"}
+              </Button>
+            </div>
+            {vocabularyAnalysisError ? <div className="folder-dialog-error">{vocabularyAnalysisError}</div> : null}
             <VocabularyEditor
               disabled={!selectedMaterialId}
               loading={vocabularyLoading}
@@ -767,13 +869,150 @@ function MaterialDialog({
               items={vocabularyItems}
               onSave={saveDialogVocabulary}
             />
-          </div>
+          </aside>
         </div>
 
         <div className="material-dialog-actions">
           <Button variant="outline" type="button" onClick={onClose}>닫기</Button>
           <Button type="button" onClick={onSave} disabled={saving}>
             <Save size={16} /> {saving ? "저장 중" : "저장"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MoveMaterialsDialog({
+  selectedMaterials,
+  folders,
+  targetFolderId,
+  moving,
+  onChangeTargetFolderId,
+  onClose,
+  onMove,
+}: {
+  selectedMaterials: ReadingMaterial[];
+  folders: ReadingFolder[];
+  targetFolderId: string;
+  moving: boolean;
+  onChangeTargetFolderId: (value: string) => void;
+  onClose: () => void;
+  onMove: () => void;
+}) {
+  const [collapsedFolderIds, setCollapsedFolderIds] = useState(() => new Set<number>());
+  const previewItems = selectedMaterials.slice(0, 5);
+  const remainingCount = Math.max(0, selectedMaterials.length - previewItems.length);
+  const folderNodes = useMemo(() => buildFolderNodes(folders, null, 0), [folders]);
+  const childFolderIdsByParentId = useMemo(() => {
+    const map = new Map<number | null, number[]>();
+    folderNodes.forEach((node) => {
+      if (node.filter.kind !== "folder") return;
+      const parentId = node.parentFolderId ?? null;
+      map.set(parentId, [...(map.get(parentId) ?? []), node.filter.folderId]);
+    });
+    return map;
+  }, [folderNodes]);
+  const nodeByFolderId = useMemo(() => {
+    const map = new Map<number, ReadingTreeSection["nodes"][number]>();
+    folderNodes.forEach((node) => {
+      if (node.filter.kind === "folder") map.set(node.filter.folderId, node);
+    });
+    return map;
+  }, [folderNodes]);
+  const isHiddenByCollapsedAncestor = (node: ReadingTreeSection["nodes"][number]) => {
+    let parentId = node.parentFolderId ?? null;
+    while (parentId !== null) {
+      if (collapsedFolderIds.has(parentId)) return true;
+      parentId = nodeByFolderId.get(parentId)?.parentFolderId ?? null;
+    }
+    return false;
+  };
+
+  return (
+    <Dialog className="material-dialog-backdrop folder-dialog-backdrop bg-slate-950/30 p-8" onClose={onClose}>
+      <DialogContent className="folder-dialog material-move-dialog max-w-none">
+        <div className="folder-dialog-head">
+          <div>
+            <span>Move Materials</span>
+            <h2>선택 자료 폴더 이동</h2>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="닫기" title="닫기">
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="material-move-summary">
+          <strong>{selectedMaterials.length}개 자료를 이동합니다.</strong>
+          <ul>
+            {previewItems.map((material) => (
+              <li key={material.id}>{material.title}</li>
+            ))}
+            {remainingCount > 0 ? <li>외 {remainingCount}개</li> : null}
+          </ul>
+        </div>
+
+        <div className="material-move-folder-tree">
+          <div className="material-tree-section">
+            <button className="material-tree-section-title" type="button">
+              <ChevronDown size={16} strokeWidth={2.5} />
+              <strong>내 폴더</strong>
+            </button>
+            <div className="material-tree-node-list">
+              <div className="material-tree-node-list-inner">
+                {folderNodes.length === 0 ? (
+                  <div className="vocabulary-tree-empty">이동할 폴더가 없습니다.</div>
+                ) : null}
+                {folderNodes.map((node) => {
+                  if (node.filter.kind !== "folder") return null;
+                  const folderId = node.filter.folderId;
+                  const hasChildFolders = (childFolderIdsByParentId.get(folderId)?.length ?? 0) > 0;
+                  const isFolderCollapsed = collapsedFolderIds.has(folderId);
+                  const isCollapsedChild = isHiddenByCollapsedAncestor(node);
+                  const active = targetFolderId === String(folderId);
+                  return (
+                    <div
+                      className={`material-tree-node-wrap ${isCollapsedChild ? "collapsed-child" : ""}`}
+                      key={node.id}
+                      style={{ paddingLeft: `${(node.depth ?? 0) * 18}px` }}
+                    >
+                      <button
+                        className={`material-tree-collapse ${!hasChildFolders ? "spacer" : ""}`}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setCollapsedFolderIds((prev) => toggleSetValue(prev, folderId));
+                        }}
+                        title={hasChildFolders ? "하위 폴더 접기" : undefined}
+                        aria-hidden={!hasChildFolders}
+                        tabIndex={hasChildFolders ? 0 : -1}
+                      >
+                        {hasChildFolders ? <ChevronDown className={isFolderCollapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} /> : null}
+                      </button>
+                      <button
+                        className={`material-tree-node ${active ? "active" : ""}`}
+                        type="button"
+                        onClick={() => onChangeTargetFolderId(String(folderId))}
+                      >
+                        {active ? <FolderOpen size={15} /> : <Folder size={15} />}
+                        <span>{node.label}</span>
+                        <em>{node.count}</em>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="folder-dialog-actions">
+          <Button type="button" variant="outline" onClick={onClose} disabled={moving}>
+            취소
+          </Button>
+          <Button type="button" onClick={onMove} disabled={moving || !targetFolderId}>
+            {moving ? <Loader2 size={15} className="spin" /> : <Folder size={15} />}
+            {moving ? "이동 중" : "이동"}
           </Button>
         </div>
       </DialogContent>
@@ -810,6 +1049,329 @@ function MaterialCard({
         <StatusBadge status={material.status} />
       </button>
     </article>
+  );
+}
+
+function ReadingVocabularyView({ apiUrl, token }: { apiUrl: string; token: string }) {
+  const [activeFilterId, setActiveFilterId] = useState("all");
+  const [activeFilter, setActiveFilter] = useState<VocabularyFilter>({ kind: "all" });
+  const [collapsedSections, setCollapsedSections] = useState(() => new Set<string>());
+  const [collapsedFolders, setCollapsedFolders] = useState(() => new Set<number>());
+  const [query, setQuery] = useState("");
+  const [selectedWordId, setSelectedWordId] = useState<number | null>(null);
+  const { data: tree } = useReadingTreeQuery(apiUrl, token);
+  const { data: materials = [], isLoading: materialsLoading } = useReadingMaterialsQuery(apiUrl, token, { kind: "all" });
+  const { data: vocabulary = [], isLoading: vocabularyLoading, error } = useReadingVocabularyQuery(apiUrl, token);
+
+  const materialMap = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials]);
+  const folderMap = useMemo(() => new Map((tree?.folders ?? []).map((folder) => [folder.id, folder])), [tree?.folders]);
+  const duplicateCountByWord = useMemo(() => {
+    const counts = new Map<string, number>();
+    vocabulary.forEach((item) => {
+      const key = item.word.trim().toLowerCase();
+      if (!key) return;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return counts;
+  }, [vocabulary]);
+
+  const rows = useMemo<VocabularyGridRow[]>(() => vocabulary.map((item) => {
+    const material = materialMap.get(item.materialId);
+    const folder = material?.folderId ? folderMap.get(material.folderId) : null;
+    return {
+      ...item,
+      folderId: material?.folderId ?? null,
+      folderName: folder?.name ?? "미분류",
+      sourceType: material?.sourceType ?? null,
+      level: material?.level ?? null,
+      materialStatus: material?.status ?? null,
+      collectedDate: material?.collectedDate ?? "",
+      duplicateCount: duplicateCountByWord.get(item.word.trim().toLowerCase()) ?? 1,
+    };
+  }), [duplicateCountByWord, folderMap, materialMap, vocabulary]);
+
+  const filteredRows = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (!matchesVocabularyFilter(row, activeFilter)) return false;
+      if (!normalizedQuery) return true;
+      return [row.word, row.meaning, row.note ?? ""]
+        .some((value) => value.toLowerCase().includes(normalizedQuery));
+    });
+  }, [activeFilter, query, rows]);
+
+  const selectedWord = useMemo(() => {
+    if (selectedWordId === null) return filteredRows[0] ?? null;
+    return filteredRows.find((row) => row.id === selectedWordId) ?? filteredRows[0] ?? null;
+  }, [filteredRows, selectedWordId]);
+
+  const filterSections = useMemo(() => buildVocabularyFilterSections(rows, tree?.folders ?? []), [rows, tree?.folders]);
+  const duplicateWords = useMemo(() => Array.from(new Set(rows.filter((row) => row.duplicateCount > 1).map((row) => row.word))), [rows]);
+
+  const columnDefs = useMemo<ColDef<VocabularyGridRow>[]>(() => [
+    {
+      field: "word",
+      headerName: "단어",
+      pinned: "left",
+      width: 170,
+      cellClass: "vocabulary-word-cell",
+    },
+    { field: "meaning", headerName: "뜻", flex: 0.9, minWidth: 180 },
+    { field: "note", headerName: "메모", flex: 1.6, minWidth: 320, valueGetter: (params) => params.data?.note ?? "" },
+  ], []);
+
+  return (
+    <section className="falcon-view material-page-view">
+      <div className="falcon-inner">
+        <header className="falcon-page-head">
+          <div>
+            <h1>독해 단어장</h1>
+            <p>독해 자료에서 수집한 단어를 자료, 폴더, 날짜, 상태 기준으로 모아 관리합니다.</p>
+          </div>
+        </header>
+
+        {error ? <div className="material-error">단어장을 불러오지 못했습니다.</div> : null}
+
+        <div className="vocabulary-workbench">
+          <aside className="material-tree-panel vocabulary-tree-panel">
+            <div className="material-list-head">
+              <div>
+                <strong>자료 트리</strong>
+              </div>
+              <span>{rows.length}</span>
+            </div>
+
+            <div className="material-tree-search">
+              <Search size={15} />
+              <span>자료, 폴더, 날짜, 상태 검색</span>
+            </div>
+
+            <div className="material-tree-sections">
+              <section className="material-tree-section">
+                <div className="material-tree-node-list">
+                  <div className="material-tree-node-list-inner">
+                    <div className="material-tree-node-wrap vocabulary-tree-root">
+                      <button
+                        type="button"
+                        className={`material-tree-node ${activeFilterId === "all" ? "active" : ""}`}
+                        onClick={() => {
+                          setActiveFilterId("all");
+                          setActiveFilter({ kind: "all" });
+                        }}
+                      >
+                        <FolderOpen size={15} />
+                        <span>전체 자료</span>
+                        <em>{rows.length}</em>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+              {filterSections.map((section) => (
+                <VocabularyTreeSection
+                  key={section.id}
+                  section={section}
+                  activeFilterId={activeFilterId}
+                  collapsed={collapsedSections.has(section.id)}
+                  collapsedFolders={collapsedFolders}
+                  onToggleSection={(sectionId) => setCollapsedSections((prev) => toggleSetValue(prev, sectionId))}
+                  onToggleFolder={(folderId) => setCollapsedFolders((prev) => toggleSetValue(prev, folderId))}
+                  onSelect={(node) => {
+                    setActiveFilterId(node.id);
+                    setActiveFilter(node.filter);
+                  }}
+                />
+              ))}
+            </div>
+          </aside>
+
+          <main className="vocabulary-grid-panel">
+            <div className="vocabulary-toolbar">
+              <div>
+                <span>단어 목록</span>
+                <h2>{vocabularyFilterTitle(activeFilterId, filterSections)}</h2>
+              </div>
+              <label className="vocabulary-search">
+                <Search size={16} />
+                <input
+                  value={query}
+                  placeholder="단어, 뜻, 메모 검색"
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="vocabulary-summary-row">
+              <div>
+                <span>현재 보기</span>
+                <strong>{filteredRows.length.toLocaleString()}</strong>
+              </div>
+              <div>
+                <span>전체 단어</span>
+                <strong>{rows.length.toLocaleString()}</strong>
+              </div>
+              <div>
+                <span>중복 의심</span>
+                <strong>{duplicateWords.length.toLocaleString()}</strong>
+              </div>
+            </div>
+
+            <div className="ag-theme-quartz reading-vocabulary-grid">
+              <AgGridReact<VocabularyGridRow>
+                theme="legacy"
+                rowData={filteredRows}
+                columnDefs={columnDefs}
+                defaultColDef={{ sortable: true, filter: true, resizable: true }}
+                rowSelection={{
+                  mode: "multiRow",
+                  checkboxes: true,
+                  headerCheckbox: true,
+                  enableClickSelection: true,
+                }}
+                rowClassRules={{
+                  "reading-vocabulary-row-selected": (params) => params.data?.id === selectedWordId,
+                }}
+                onRowClicked={(event) => {
+                  if (event.data) setSelectedWordId(event.data.id);
+                }}
+                overlayNoRowsTemplate={vocabularyLoading || materialsLoading ? "단어를 불러오는 중입니다." : "조건에 맞는 단어가 없습니다."}
+              />
+            </div>
+
+            <aside className="vocabulary-detail-panel">
+              {selectedWord ? (
+                <>
+                  <div>
+                    <span>선택 단어</span>
+                    <h3>{selectedWord.word}</h3>
+                    <p>{selectedWord.meaning || "뜻이 입력되지 않았습니다."}</p>
+                  </div>
+                  <dl className="vocabulary-detail-meta compact">
+                    <div>
+                      <dt>독해 자료</dt>
+                      <dd>{selectedWord.materialTitle}</dd>
+                    </div>
+                    <div>
+                      <dt>난이도</dt>
+                      <dd>{selectedWord.level ? readingLevelLabel(selectedWord.level) : "-"}</dd>
+                    </div>
+                    <div>
+                      <dt>중복</dt>
+                      <dd>{selectedWord.duplicateCount > 1 ? `${selectedWord.duplicateCount}개 자료에서 발견` : "없음"}</dd>
+                    </div>
+                  </dl>
+                  {selectedWord.note ? <p className="vocabulary-detail-note">{selectedWord.note}</p> : null}
+                </>
+              ) : (
+                <div className="material-empty">단어를 선택하면 상세 정보가 표시됩니다.</div>
+              )}
+            </aside>
+          </main>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function VocabularyTreeSection({
+  section,
+  activeFilterId,
+  collapsed,
+  collapsedFolders,
+  onToggleSection,
+  onToggleFolder,
+  onSelect,
+}: {
+  section: VocabularyFilterSection;
+  activeFilterId: string;
+  collapsed: boolean;
+  collapsedFolders: Set<number>;
+  onToggleSection: (sectionId: string) => void;
+  onToggleFolder: (folderId: number) => void;
+  onSelect: (node: VocabularyFilterNode) => void;
+}) {
+  const childFolderIdsByParentId = useMemo(() => {
+    const map = new Map<number | null, number[]>();
+    section.nodes.forEach((node) => {
+      if (node.filter.kind !== "folder") return;
+      const parentId = node.parentFolderId ?? null;
+      map.set(parentId, [...(map.get(parentId) ?? []), node.filter.folderId]);
+    });
+    return map;
+  }, [section.nodes]);
+  const nodeByFolderId = useMemo(() => {
+    const map = new Map<number, VocabularyFilterNode>();
+    section.nodes.forEach((node) => {
+      if (node.filter.kind === "folder") map.set(node.filter.folderId, node);
+    });
+    return map;
+  }, [section.nodes]);
+  const isHiddenByCollapsedAncestor = (node: VocabularyFilterNode) => {
+    if (section.id !== "library") return false;
+    let parentId = node.parentFolderId ?? null;
+    while (parentId !== null) {
+      if (collapsedFolders.has(parentId)) return true;
+      parentId = nodeByFolderId.get(parentId)?.parentFolderId ?? null;
+    }
+    return false;
+  };
+
+  return (
+    <section className="material-tree-section">
+      <button className="material-tree-section-title" type="button" onClick={() => onToggleSection(section.id)}>
+        <ChevronDown className={collapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} />
+        <strong>{section.label}</strong>
+      </button>
+      <div className={`material-tree-node-list ${collapsed ? "collapsed" : ""}`}>
+        <div className="material-tree-node-list-inner">
+          {section.nodes.length === 0 ? (
+            <div className="vocabulary-tree-empty">표시할 항목이 없습니다.</div>
+          ) : null}
+          {section.nodes.map((node) => {
+            const folderId = node.filter.kind === "folder" ? node.filter.folderId : null;
+            const hasChildFolders = section.id === "library" && folderId !== null && (childFolderIdsByParentId.get(folderId)?.length ?? 0) > 0;
+            const isFolderCollapsed = folderId !== null && collapsedFolders.has(folderId);
+            const isCollapsedChild = isHiddenByCollapsedAncestor(node);
+            return (
+              <div
+                className={`material-tree-node-wrap ${isCollapsedChild ? "collapsed-child" : ""}`}
+                key={node.id}
+                style={{ paddingLeft: `${(node.depth ?? 0) * 18}px` }}
+              >
+                <button
+                  className={`material-tree-collapse ${!hasChildFolders ? "spacer" : ""}`}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (folderId !== null && hasChildFolders) onToggleFolder(folderId);
+                  }}
+                  title={hasChildFolders ? "하위 폴더 접기" : undefined}
+                  aria-hidden={!hasChildFolders}
+                  tabIndex={hasChildFolders ? 0 : -1}
+                >
+                  {hasChildFolders ? <ChevronDown className={isFolderCollapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} /> : null}
+                </button>
+                <button
+                  className={`material-tree-node ${node.id === activeFilterId ? "active" : ""}`}
+                  type="button"
+                  onClick={() => onSelect(node)}
+                >
+                  {section.id === "dates" ? (
+                    <CalendarDays size={15} />
+                  ) : node.id === activeFilterId ? (
+                    <FolderOpen size={15} />
+                  ) : (
+                    <Folder size={15} />
+                  )}
+                  <span>{node.label}</span>
+                  <em>{node.count}</em>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1109,9 +1671,9 @@ function VocabularyEditor({
 }) {
   const [rows, setRows] = useState<VocabularyEntry[]>([]);
   const columnDefs = useMemo<ColDef<VocabularyEntry>[]>(() => [
-    { field: "word", headerName: "단어", editable: !disabled, flex: 1, minWidth: 140 },
-    { field: "meaning", headerName: "뜻", editable: !disabled, flex: 1, minWidth: 160 },
-    { field: "note", headerName: "메모", editable: !disabled, flex: 1.6, minWidth: 220 },
+    { field: "word", headerName: "단어", editable: !disabled, flex: 0.9, minWidth: 110 },
+    { field: "meaning", headerName: "뜻", editable: !disabled, flex: 1, minWidth: 120 },
+    { field: "note", headerName: "메모", editable: !disabled, flex: 1.4, minWidth: 160 },
   ], [disabled]);
 
   useEffect(() => {
@@ -1134,7 +1696,7 @@ function VocabularyEditor({
   })));
 
   return (
-    <div className="grid gap-3">
+    <div className="material-vocabulary-editor grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-bold text-slate-500">
           {disabled ? "자료를 저장한 뒤 단어 정리를 편집할 수 있습니다." : `${rows.length}개 단어`}
@@ -1150,6 +1712,7 @@ function VocabularyEditor({
       </div>
       <div className="ag-theme-quartz material-vocabulary-grid">
         <AgGridReact<VocabularyEntry>
+          theme="legacy"
           rowData={rows}
           columnDefs={columnDefs}
           defaultColDef={{ sortable: false, resizable: true, editable: !disabled }}
@@ -1521,6 +2084,89 @@ function formFromMaterial(material: ReadingMaterial): ReadingMaterialUpsertReque
 function activeTreeTitle(activeTreeId: string, sections: ReadingTreeSection[]) {
   if (activeTreeId === "all") return "전체 자료";
   return sections.flatMap((section) => section.nodes).find((node) => node.id === activeTreeId)?.label ?? "전체 자료";
+}
+
+function buildVocabularyFilterSections(rows: VocabularyGridRow[], folders: ReadingFolder[]): VocabularyFilterSection[] {
+  const countByFolder = new Map<number, number>();
+  const countByDate = new Map<string, number>();
+  const countBySourceType = new Map<ReadingSourceType, number>();
+  let missingMeaningCount = 0;
+  let hasNoteCount = 0;
+  let duplicateCount = 0;
+
+  rows.forEach((row) => {
+    if (row.folderId !== null) countByFolder.set(row.folderId, (countByFolder.get(row.folderId) ?? 0) + 1);
+    if (row.collectedDate) countByDate.set(row.collectedDate, (countByDate.get(row.collectedDate) ?? 0) + 1);
+    if (row.sourceType) countBySourceType.set(row.sourceType, (countBySourceType.get(row.sourceType) ?? 0) + 1);
+    if (!row.meaning.trim()) missingMeaningCount += 1;
+    if (row.note?.trim()) hasNoteCount += 1;
+    if (row.duplicateCount > 1) duplicateCount += 1;
+  });
+
+  return [
+    {
+      id: "library",
+      label: "내 폴더",
+      nodes: buildFolderNodes(folders, null, 0)
+        .map((node) => ({
+          id: node.id,
+          label: node.label,
+          depth: node.depth,
+          parentFolderId: node.parentFolderId,
+          count: node.filter.kind === "folder" ? countByFolder.get(node.filter.folderId) ?? 0 : 0,
+          filter: node.filter.kind === "folder"
+            ? { kind: "folder", folderId: node.filter.folderId } as VocabularyFilter
+            : { kind: "all" } as VocabularyFilter,
+        }))
+    },
+    {
+      id: "dates",
+      label: "날짜별",
+      nodes: Array.from(countByDate.entries())
+        .map(([date, count]) => ({
+          id: `date:${date}`,
+          label: date,
+          count,
+          filter: { kind: "date", date } as VocabularyFilter,
+        }))
+        .sort((a, b) => b.label.localeCompare(a.label)),
+    },
+    {
+      id: "sourceTypes",
+      label: "유형별",
+      nodes: Object.entries(sourceTypeLabels).map(([sourceType, label]) => ({
+        id: `source:${sourceType}`,
+        label,
+        count: countBySourceType.get(sourceType as ReadingSourceType) ?? 0,
+        filter: { kind: "sourceType", sourceType: sourceType as ReadingSourceType } as VocabularyFilter,
+      })),
+    },
+    {
+      id: "statuses",
+      label: "상태별",
+      nodes: [
+        { id: "status:missingMeaning", label: "뜻 없음", count: missingMeaningCount, filter: { kind: "status", status: "missingMeaning" } as VocabularyFilter },
+        { id: "status:hasNote", label: "메모 있음", count: hasNoteCount, filter: { kind: "status", status: "hasNote" } as VocabularyFilter },
+        { id: "status:duplicate", label: "중복 의심", count: duplicateCount, filter: { kind: "status", status: "duplicate" } as VocabularyFilter },
+      ].filter((node) => node.count > 0),
+    },
+  ];
+}
+
+function matchesVocabularyFilter(row: VocabularyGridRow, filter: VocabularyFilter) {
+  if (filter.kind === "all") return true;
+  if (filter.kind === "material") return row.materialId === filter.materialId;
+  if (filter.kind === "folder") return row.folderId === filter.folderId;
+  if (filter.kind === "date") return row.collectedDate === filter.date;
+  if (filter.kind === "sourceType") return row.sourceType === filter.sourceType;
+  if (filter.status === "missingMeaning") return !row.meaning.trim();
+  if (filter.status === "hasNote") return Boolean(row.note?.trim());
+  return row.duplicateCount > 1;
+}
+
+function vocabularyFilterTitle(activeFilterId: string, sections: ReturnType<typeof buildVocabularyFilterSections>) {
+  if (activeFilterId === "all") return "전체 단어";
+  return sections.flatMap((section) => section.nodes).find((node) => node.id === activeFilterId)?.label ?? "전체 단어";
 }
 
 function toggleSetValue<T>(set: Set<T>, value: T) {

@@ -505,47 +505,49 @@ function TreeSection({
         <strong>{section.label}</strong>
       </button>
       <div className={`material-tree-node-list ${collapsed ? "collapsed" : ""}`}>
-        {section.nodes.map((node) => {
-          const folderId = node.filter.kind === "folder" ? node.filter.folderId : null;
-          const hasChildFolders = folderId !== null && (childFolderIdsByParentId.get(folderId)?.length ?? 0) > 0;
-          const isFolderCollapsed = folderId !== null && collapsedFolders.has(folderId);
-          const isCollapsedChild = isHiddenByCollapsedAncestor(node);
-          return (
-            <div
-              className={`material-tree-node-wrap ${isCollapsedChild ? "collapsed-child" : ""}`}
-              key={node.id}
-              style={{ paddingLeft: `${(node.depth ?? 0) * 18}px` }}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (folderId !== null) onOpenContextMenu(node, event.clientX, event.clientY);
-              }}
-            >
-              <button
-                className={`material-tree-collapse ${!hasChildFolders ? "spacer" : ""}`}
-                type="button"
-                onClick={(event) => {
+        <div className="material-tree-node-list-inner">
+          {section.nodes.map((node) => {
+            const folderId = node.filter.kind === "folder" ? node.filter.folderId : null;
+            const hasChildFolders = folderId !== null && (childFolderIdsByParentId.get(folderId)?.length ?? 0) > 0;
+            const isFolderCollapsed = folderId !== null && collapsedFolders.has(folderId);
+            const isCollapsedChild = isHiddenByCollapsedAncestor(node);
+            return (
+              <div
+                className={`material-tree-node-wrap ${isCollapsedChild ? "collapsed-child" : ""}`}
+                key={node.id}
+                style={{ paddingLeft: `${(node.depth ?? 0) * 18}px` }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
                   event.stopPropagation();
-                  if (folderId !== null && hasChildFolders) onToggleFolder(folderId);
+                  if (folderId !== null) onOpenContextMenu(node, event.clientX, event.clientY);
                 }}
-                title={hasChildFolders ? "하위 폴더 접기" : undefined}
-                aria-hidden={!hasChildFolders}
-                tabIndex={hasChildFolders ? 0 : -1}
               >
-                {hasChildFolders ? <ChevronDown className={isFolderCollapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} /> : null}
-              </button>
-              <button
-                className={`material-tree-node ${node.id === activeTreeId ? "active" : ""}`}
-                type="button"
-                onClick={() => onSelect(node.id, node.filter)}
-              >
-                {section.id === "dates" ? <CalendarDays size={15} /> : node.id === activeTreeId ? <FolderOpen size={15} /> : <Folder size={15} />}
-                <span>{node.label}</span>
-                <em>{node.count}</em>
-              </button>
-            </div>
-          );
-        })}
+                <button
+                  className={`material-tree-collapse ${!hasChildFolders ? "spacer" : ""}`}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (folderId !== null && hasChildFolders) onToggleFolder(folderId);
+                  }}
+                  title={hasChildFolders ? "하위 폴더 접기" : undefined}
+                  aria-hidden={!hasChildFolders}
+                  tabIndex={hasChildFolders ? 0 : -1}
+                >
+                  {hasChildFolders ? <ChevronDown className={isFolderCollapsed ? "collapsed" : ""} size={16} strokeWidth={2.5} /> : null}
+                </button>
+                <button
+                  className={`material-tree-node ${node.id === activeTreeId ? "active" : ""}`}
+                  type="button"
+                  onClick={() => onSelect(node.id, node.filter)}
+                >
+                  {section.id === "dates" ? <CalendarDays size={15} /> : node.id === activeTreeId ? <FolderOpen size={15} /> : <Folder size={15} />}
+                  <span>{node.label}</span>
+                  <em>{node.count}</em>
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

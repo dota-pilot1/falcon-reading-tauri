@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReadingTreeFilter } from "../../../entities/reading-material";
-import { fetchReadingMaterialVocabulary, fetchReadingMaterials, fetchReadingTree } from "../../../entities/reading-material/api/readingMaterialApi";
+import { fetchReadingMaterialVocabulary, fetchReadingMaterials, fetchReadingTree, fetchReadingVocabulary } from "../../../entities/reading-material/api/readingMaterialApi";
 
 function paramsFromFilter(filter: ReadingTreeFilter) {
   if (filter.kind === "folder") return { folderId: filter.folderId };
@@ -46,13 +46,21 @@ export function useReadingMaterialVocabularyQuery(apiUrl: string, token: string,
   });
 }
 
+export function useReadingVocabularyQuery(apiUrl: string, token: string) {
+  return useQuery({
+    queryKey: readingMaterialQueryKeys.vocabularyRoot(apiUrl),
+    queryFn: () => fetchReadingVocabulary(apiUrl, token),
+    enabled: token.trim().length > 0,
+  });
+}
+
 export function useInvalidateReadingMaterials(apiUrl: string) {
   const queryClient = useQueryClient();
 
   return () =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.tree(apiUrl) }),
-      queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.materialsRoot(apiUrl) }),
-      queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.vocabularyRoot(apiUrl) }),
+      queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.tree(apiUrl), refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.materialsRoot(apiUrl), refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: readingMaterialQueryKeys.vocabularyRoot(apiUrl), refetchType: "all" }),
     ]);
 }

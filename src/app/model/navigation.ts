@@ -1,13 +1,14 @@
 import {
   BookOpenCheck,
   BookOpenText,
+  LibraryBig,
   Settings,
   UserCircle,
   type LucideIcon,
 } from "lucide-react";
 import type { UserSummary } from "../../entities/user/model/types";
 
-export type WebMenuId = "readingMaterials" | "readingStudy" | "profile" | "settings";
+export type WebMenuId = "readingMaterials" | "readingVocabulary" | "readingStudy" | "profile" | "settings";
 
 export type WebMenu = {
   id: WebMenuId;
@@ -18,6 +19,12 @@ export type WebMenu = {
 };
 
 export const WEB_HEADER_MENUS: WebMenu[] = [
+  {
+    id: "readingVocabulary",
+    label: "독해 단어장",
+    subtitle: "자료별 단어 · 중복 점검 · 학습 연결",
+    icon: LibraryBig,
+  },
   {
     id: "readingMaterials",
     label: "독해 자료",

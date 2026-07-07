@@ -839,8 +839,10 @@ button:disabled {
   font-size: 11px;
   font-weight: 900;
   line-height: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 
 .sidebar-footer {
@@ -1139,9 +1141,10 @@ button:disabled {
   line-height: 12px;
 }
 
-.app-content {
+.app-content,
+.app-main {
   display: grid;
-  grid-template-rows: 56px 1fr;
+  grid-template-rows: 56px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
@@ -1696,10 +1699,59 @@ button:disabled {
   position: sticky;
   top: 16px;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  max-height: calc(100vh - 128px);
+  grid-template-rows: auto auto auto;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  overflow: visible;
+}
+
+.material-page-view {
+  overflow: hidden;
+}
+
+.material-page-view .falcon-inner {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 20px;
+}
+
+.material-page-view .falcon-page-head,
+.material-page-view .material-error {
+  flex: 0 0 auto;
+}
+
+.material-page-view .material-workbench,
+.material-page-view .vocabulary-workbench {
+  flex: 1 1 0;
+  align-items: stretch;
   min-height: 0;
   overflow: hidden;
+}
+
+.material-page-view .material-tree-panel {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.material-page-view .material-tree-sections {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: scroll;
+  padding-right: 6px;
+}
+
+.material-page-view .material-editor-panel,
+.material-page-view .vocabulary-grid-panel {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .recent-material-list,
@@ -1961,25 +2013,40 @@ button:disabled {
 
 .material-tree-sections {
   display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
   gap: 8px;
   margin-top: 12px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
   padding-right: 4px;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.material-tree-sections {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 .material-tree-sections::-webkit-scrollbar {
-  width: 8px;
+  width: 10px;
 }
 
 .material-tree-sections::-webkit-scrollbar-thumb {
+  border: 2px solid #ffffff;
   border-radius: 999px;
   background: #cbd5e1;
+  min-height: 38px;
+}
+
+.material-tree-sections:hover::-webkit-scrollbar-thumb {
+  background: #94a3b8;
 }
 
 .material-tree-sections::-webkit-scrollbar-track {
-  background: transparent;
+  border-radius: 999px;
+  background: #f1f5f9;
 }
 
 .material-tree-section {
@@ -2015,19 +2082,26 @@ button:disabled {
 
 .material-tree-node-list {
   display: grid;
+  grid-template-rows: 1fr;
   gap: 2px;
-  max-height: 1200px;
   opacity: 1;
   overflow: hidden;
   transition:
-    max-height 220ms ease,
-    opacity 160ms ease;
+    grid-template-rows 180ms ease,
+    opacity 140ms ease;
 }
 
 .material-tree-node-list.collapsed {
-  max-height: 0;
+  grid-template-rows: 0fr;
   opacity: 0;
   pointer-events: none;
+}
+
+.material-tree-node-list > .material-tree-node-list-inner {
+  display: grid;
+  gap: 2px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .material-tree-node-wrap {
@@ -3476,6 +3550,305 @@ button:disabled {
   --ag-wrapper-border-radius: 8px;
 }
 
+.vocabulary-workbench {
+  display: grid;
+  grid-template-columns: 328px minmax(680px, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-height: 0;
+  padding-top: 24px;
+}
+
+.vocabulary-filter-panel,
+.vocabulary-grid-panel,
+.vocabulary-detail-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.vocabulary-filter-panel {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 128px);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.vocabulary-filter-head,
+.vocabulary-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.vocabulary-filter-head h2,
+.vocabulary-toolbar h2 {
+  margin: 0;
+  color: #18181b;
+  font-size: 17px;
+  line-height: 24px;
+}
+
+.vocabulary-filter-head p,
+.vocabulary-toolbar span,
+.vocabulary-detail-panel span {
+  margin: 3px 0 0;
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.vocabulary-filter-head svg {
+  color: #047857;
+}
+
+.vocabulary-filter-section {
+  display: grid;
+  gap: 7px;
+  padding-top: 10px;
+  border-top: 1px solid #eef0f3;
+}
+
+.vocabulary-filter-section h3 {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.vocabulary-filter-section > div {
+  display: grid;
+  gap: 6px;
+}
+
+.vocabulary-filter-section p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.vocabulary-filter-node {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #475569;
+  background: #ffffff;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.vocabulary-filter-node:hover {
+  border-color: #dbe4ea;
+  background: #f8fafc;
+  color: #18181b;
+}
+
+.vocabulary-filter-node.active {
+  border-color: #a7f3d0;
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.vocabulary-filter-node span {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vocabulary-filter-node strong {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.vocabulary-grid-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.vocabulary-search {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: min(420px, 42vw);
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #d7dce4;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.vocabulary-search:focus-within {
+  border-color: #18181b;
+  box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.08);
+}
+
+.vocabulary-search svg {
+  color: #64748b;
+}
+
+.vocabulary-search input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #111827;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.vocabulary-summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vocabulary-summary-row > div {
+  display: grid;
+  gap: 3px;
+  min-height: 62px;
+  padding: 11px 12px;
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.vocabulary-summary-row span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.vocabulary-summary-row strong {
+  color: #18181b;
+  font-size: 19px;
+  line-height: 24px;
+}
+
+.reading-vocabulary-grid {
+  width: 100%;
+  height: 472px;
+  min-height: 360px;
+  --ag-font-family: inherit;
+  --ag-font-size: 13px;
+  --ag-border-radius: 8px;
+  --ag-wrapper-border-radius: 8px;
+}
+
+.vocabulary-word-cell {
+  color: #111827;
+  font-weight: 950;
+}
+
+.vocabulary-tree-root {
+  grid-template-columns: 1fr;
+  padding-left: 0;
+}
+
+.reading-vocabulary-grid .ag-row.reading-vocabulary-row-selected,
+.reading-vocabulary-grid .ag-row.reading-vocabulary-row-selected.ag-row-hover {
+  background: #ecfdf5;
+}
+
+.reading-vocabulary-grid .ag-row.reading-vocabulary-row-selected .ag-cell {
+  color: #064e3b;
+  background: transparent;
+}
+
+.reading-vocabulary-grid .ag-row.reading-vocabulary-row-selected .vocabulary-word-cell {
+  color: #047857;
+}
+
+.vocabulary-tree-empty {
+  padding: 6px 8px 6px 28px;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.vocabulary-detail-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.vocabulary-detail-panel h3 {
+  margin: 2px 0 4px;
+  color: #18181b;
+  font-size: 22px;
+  line-height: 28px;
+}
+
+.vocabulary-detail-panel p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.vocabulary-detail-panel dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.vocabulary-detail-panel dl.compact {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 0.8fr);
+}
+
+.vocabulary-detail-panel dl div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.vocabulary-detail-panel dt {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.vocabulary-detail-panel dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #18181b;
+  font-size: 13px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vocabulary-detail-note {
+  padding: 11px;
+  border-left: 3px solid #10b981;
+  border-radius: 8px;
+  background: #ecfdf5;
+}
+
 .material-dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -3498,6 +3871,100 @@ button:disabled {
   overflow: auto;
 }
 
+.material-dialog-full {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 96vw;
+  height: 92vh;
+  max-width: 1760px;
+  max-height: calc(100vh - 24px);
+  overflow: hidden;
+}
+
+.material-dialog-full .editor-section-title {
+  margin-bottom: 14px;
+}
+
+.material-dialog-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(520px, 600px);
+  gap: 18px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.material-dialog-main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.material-dialog-vocabulary-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.material-dialog-vocabulary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.material-dialog-vocabulary-head span {
+  display: block;
+  margin-bottom: 2px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.material-dialog-vocabulary-head strong {
+  color: #18181b;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.material-dialog-vocabulary-panel .material-vocabulary-editor {
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.material-dialog-vocabulary-panel .material-vocabulary-grid {
+  height: 100%;
+  min-height: 260px;
+}
+
+@media (max-width: 1320px) {
+  .material-dialog-full {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+  }
+
+  .material-dialog-body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .material-dialog-main,
+  .material-dialog-vocabulary-panel {
+    overflow: visible;
+  }
+
+  .material-dialog-vocabulary-panel .material-vocabulary-grid {
+    height: 320px;
+  }
+}
+
 .material-dialog-actions {
   display: flex;
   justify-content: flex-end;
@@ -3505,6 +3972,56 @@ button:disabled {
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid #eef0f3;
+}
+
+.material-move-dialog {
+  width: min(460px, calc(100vw - 64px));
+}
+
+.material-move-summary {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.material-move-summary strong {
+  color: #18181b;
+  font-size: 14px;
+}
+
+.material-move-summary ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.material-move-summary li {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-move-folder-tree {
+  max-height: 320px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow-y: auto;
+}
+
+.material-move-folder-tree .material-tree-section-title {
+  cursor: default;
 }
 
 .analysis-summary-grid {
@@ -6286,16 +6803,32 @@ button:disabled {
   .material-home-layout,
   .material-workbench,
   .material-text-pair,
+  .vocabulary-workbench,
   .reading-study-layout,
   .reading-study-workspace,
   .reading-study-support {
     grid-template-columns: 1fr;
   }
 
-  .material-tree-panel {
+  .material-tree-panel,
+  .vocabulary-filter-panel {
     position: static;
+    height: auto;
     max-height: none;
     overflow: visible;
+  }
+
+  .vocabulary-toolbar,
+  .vocabulary-detail-panel dl {
+    grid-template-columns: 1fr;
+  }
+
+  .vocabulary-toolbar {
+    display: grid;
+  }
+
+  .vocabulary-search {
+    width: 100%;
   }
 
   .material-tree-sections {
