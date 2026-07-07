@@ -123,7 +123,7 @@ type VocabularyFilterSection = {
 };
 
 const LEARNING_QUEUE_KEY = "falcon-reading:learning-queue";
-const appVersion = "0.1.16";
+const appVersion = "0.1.19";
 const fallbackUser = {
   id: 0,
   email: "local@falcon.reading",
