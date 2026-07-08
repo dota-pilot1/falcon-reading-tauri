@@ -1,17 +1,18 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { MouseEvent } from "react";
-import type { WebMenu, WebMenuId } from "../../../app/model/navigation";
+import { MouseEvent } from "react";
+import type { WebMenu } from "../../../app/model/navigation";
 import { WindowControls } from "./WindowControls";
 
 type AppTopbarProps = {
   activeWebMenu: WebMenu;
-  activeMenu?: WebMenuId;
 };
 
 export function AppTopbar({ activeWebMenu }: AppTopbarProps) {
   const ActiveWebMenuIcon = activeWebMenu.icon;
   const win = getCurrentWindow();
+
   const handleDragStart = (event: MouseEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
     if (event.button !== 0) return;
     void win.startDragging();
   };

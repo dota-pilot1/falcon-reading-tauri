@@ -21,6 +21,7 @@ import {
 import { defaultApiUrl, unauthorizedEventName } from "../shared/api/client";
 import { Button } from "../shared/ui/Button";
 import { Select } from "../shared/ui/Select";
+import { DateInput } from "../shared/ui/DateInput";
 import { Dialog, DialogContent } from "../shared/ui/Dialog";
 import { Badge } from "../shared/ui/Badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/Tabs";
@@ -240,8 +241,17 @@ export function App() {
         onLogout={() => void handleLogout()}
       />
       <div className="app-main">
-        <AppTopbar activeWebMenu={activeWebMenu} activeMenu={activeMenu} />
-        <FalconWorkspace activeMenu={activeMenu} activeWebMenu={activeWebMenu} apiUrl={apiUrl} token={token} userName={user.username || user.email} appUpdate={appUpdate} />
+        <AppTopbar
+          activeWebMenu={activeWebMenu}
+        />
+        <FalconWorkspace
+          activeMenu={activeMenu}
+          activeWebMenu={activeWebMenu}
+          apiUrl={apiUrl}
+          token={token}
+          userName={user.username || user.email}
+          appUpdate={appUpdate}
+        />
       </div>
     </div>
   );
@@ -800,7 +810,11 @@ function MaterialDialog({
               </div>
               <label>
                 저장 날짜
-                <input value={form.collectedDate} onChange={(event) => onChange((prev) => ({ ...prev, collectedDate: event.target.value }))} />
+                <DateInput
+                  ariaLabel="저장 날짜"
+                  value={form.collectedDate}
+                  onChange={(collectedDate) => onChange((prev) => ({ ...prev, collectedDate }))}
+                />
               </label>
               <div className="material-field">
                 저장 폴더
@@ -1115,7 +1129,7 @@ function ReadingVocabularyView({ apiUrl, token }: { apiUrl: string; token: strin
   }, [filteredRows, selectedWordId]);
 
   const filterSections = useMemo(() => buildVocabularyFilterSections(rows, tree?.folders ?? []), [rows, tree?.folders]);
-  const duplicateWords = useMemo(() => Array.from(new Set(rows.filter((row) => row.duplicateCount > 1).map((row) => row.word))), [rows]);
+  const normalizedQuery = query.trim();
 
   const columnDefs = useMemo<ColDef<VocabularyGridRow>[]>(() => [
     {
@@ -1197,8 +1211,10 @@ function ReadingVocabularyView({ apiUrl, token }: { apiUrl: string; token: strin
           <main className="vocabulary-grid-panel">
             <div className="vocabulary-toolbar">
               <div>
-                <span>단어 목록</span>
-                <h2>{vocabularyFilterTitle(activeFilterId, filterSections)}</h2>
+                <h2>
+                  {vocabularyFilterTitle(activeFilterId, filterSections)}
+                  <span>{normalizedQuery ? `(${filteredRows.length.toLocaleString()}/${rows.length.toLocaleString()})` : `(${rows.length.toLocaleString()})`}</span>
+                </h2>
               </div>
               <label className="vocabulary-search">
                 <Search size={16} />
@@ -1208,21 +1224,6 @@ function ReadingVocabularyView({ apiUrl, token }: { apiUrl: string; token: strin
                   onChange={(event) => setQuery(event.target.value)}
                 />
               </label>
-            </div>
-
-            <div className="vocabulary-summary-row">
-              <div>
-                <span>현재 보기</span>
-                <strong>{filteredRows.length.toLocaleString()}</strong>
-              </div>
-              <div>
-                <span>전체 단어</span>
-                <strong>{rows.length.toLocaleString()}</strong>
-              </div>
-              <div>
-                <span>중복 의심</span>
-                <strong>{duplicateWords.length.toLocaleString()}</strong>
-              </div>
             </div>
 
             <div className="ag-theme-quartz reading-vocabulary-grid">
@@ -1505,10 +1506,6 @@ function ReadingStudyView({ apiUrl, token }: { apiUrl: string; token: string }) 
                 <p>독해 자료에서 지정한 항목입니다.</p>
               </div>
               <div className="reading-study-counts" aria-label="독해 학습 자료 개수">
-                <span>
-                  전체
-                  <strong>{allMaterials.length}</strong>
-                </span>
                 <span>
                   오늘
                   <strong>{queuedMaterials.length}</strong>

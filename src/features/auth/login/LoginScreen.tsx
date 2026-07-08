@@ -4,16 +4,12 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { FormEvent, MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
-  BookOpenCheck,
-  CheckCircle2,
   CircleAlert,
   Download,
   Eye,
   EyeOff,
-  GraduationCap,
   Loader2,
   LogIn,
-  MessageCircle,
   RefreshCw,
   UserPlus,
   Zap,
@@ -292,43 +288,7 @@ export function LoginScreen({ onLogin, onSignup }: LoginScreenProps) {
           </div>
 
           <aside className="login-product-panel">
-            <div className="app-preview" aria-hidden="true">
-              <div className="app-preview-sidebar">
-                <span className="active"><Zap size={16} /></span>
-                <span><MessageCircle size={15} /></span>
-                <span><GraduationCap size={15} /></span>
-                <span><BookOpenCheck size={15} /></span>
-              </div>
-              <div className="app-preview-main">
-                <div className="app-preview-top">
-                  <div>
-                    <strong>오늘의 학습</strong>
-                    <span>Falcon Reading</span>
-                  </div>
-                  <i />
-                </div>
-                <div className="app-preview-card">
-                  <div>
-                    <span>독해</span>
-                    <strong>문장 구조 잡기</strong>
-                  </div>
-                  <CheckCircle2 size={18} />
-                </div>
-                <div className="app-preview-grid">
-                  <div>
-                    <span>듣기</span>
-                    <strong>8분</strong>
-                  </div>
-                  <div>
-                    <span>정답률</span>
-                    <strong>86%</strong>
-                  </div>
-                </div>
-                <div className="app-preview-progress">
-                  <span />
-                </div>
-              </div>
-            </div>
+            <img className="login-cover-image" src="/falcon-reading-study-image.png" alt="" />
             <div className="login-product-copy">
               <h2>{isSignup ? "독해와 듣기 루틴을 준비하세요." : "오늘의 영어 입력을 이어가세요."}</h2>
               <p>로그인 후 오늘 학습, 독해, 듣기 화면으로 곧바로 전환됩니다.</p>

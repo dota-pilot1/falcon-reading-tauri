@@ -10,7 +10,7 @@ type AppSidebarProps = {
   menus: WebMenu[];
   activeMenu: WebMenuId;
   activeWebMenu: WebMenu;
-  user: UserSummary;
+  user: UserSummary | null;
   connectionStatus: ConnectionStatus;
   appVersion: string;
   updateState?: AppUpdateState;
@@ -34,14 +34,17 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
-  const displayName = user.username || user.email;
-  const roleName = user.role.name || user.role.code.replace("ROLE_", "");
+  const displayName = user?.username || user?.email || "Guest";
+  const roleName = user ? user.role.name || user.role.code.replace("ROLE_", "") : "비로그인";
   const statusLabel = {
     checking: "연결 확인 중",
     online: "서버 연결됨",
     offline: "서버 연결 안 됨",
   } satisfies Record<ConnectionStatus, string>;
-  const showUpdateButton = updateState?.status === "available" || updateState?.status === "downloading";
+  const showUpdateButton =
+    updateState?.status === "checking" ||
+    updateState?.status === "available" ||
+    updateState?.status === "downloading";
 
   useEffect(() => {
     if (!accountOpen) return;
@@ -75,6 +78,7 @@ export function AppSidebar({
         <nav className="sidebar-menu">
           {menus.map((menu) => {
             const Icon = menu.icon;
+            const labelLines = menu.id === "readingVocabulary" ? ["독해", "단어장"] : [menu.label];
             return (
               <button
                 key={menu.id}
@@ -84,7 +88,11 @@ export function AppSidebar({
               >
                 <Icon size={18} />
                 <span>
-                  <strong>{menu.label}</strong>
+                  <strong>
+                    {labelLines.map((line) => (
+                      <span key={line}>{line}</span>
+                    ))}
+                  </strong>
                 </span>
               </button>
             );
@@ -101,13 +109,28 @@ export function AppSidebar({
             type="button"
             className="sidebar-update-button"
             onClick={onInstallUpdate}
-            disabled={updateBusy || !onInstallUpdate}
-            title={`새 버전 v${updateState?.availableVersion || ""} 설치`}
+            disabled={updateState?.status === "checking" || updateBusy || !onInstallUpdate}
+            title={
+              updateState?.status === "checking"
+                ? "업데이트 확인 중"
+                : `새 버전 v${updateState?.availableVersion || ""} 설치`
+            }
           >
-            {updateState?.status === "downloading" ? <Loader2 className="spin" size={15} /> : <Download size={15} />}
-            <span>{updateState?.status === "downloading" ? `${updateState.progress}%` : "업데이트"}</span>
+            {updateState?.status === "checking" || updateState?.status === "downloading" ? (
+              <Loader2 className="spin" size={15} />
+            ) : (
+              <Download size={15} />
+            )}
+            <span>
+              {updateState?.status === "checking"
+                ? "확인 중"
+                : updateState?.status === "downloading"
+                  ? `${updateState.progress}%`
+                  : "업데이트"}
+            </span>
           </button>
         )}
+        {user ? (
         <div className="account-panel" ref={accountRef}>
           <button
             type="button"
@@ -138,8 +161,8 @@ export function AppSidebar({
                     {connectionStatus === "offline" && <CircleAlert size={13} />}
                   </div>
                 </div>
-                <div className="account-copy">
-                  <strong>{displayName}</strong>
+              <div className="account-copy">
+                <strong>{displayName}</strong>
                   <span>{user.email}</span>
                 </div>
               </div>
@@ -172,6 +195,17 @@ export function AppSidebar({
             </div>
           )}
         </div>
+        ) : (
+          <div className="sidebar-guest">
+            <div className="account-card">
+              <div className="account-avatar">G</div>
+              <div className="account-status offline" aria-label={statusLabel.offline}>
+                <CircleAlert size={13} />
+              </div>
+            </div>
+            <span>로그인 필요</span>
+          </div>
+        )}
         <button className="auth-button" onClick={() => onOpenMenu("settings")} title="설정">
           <Settings size={15} />
           <span>설정</span>
