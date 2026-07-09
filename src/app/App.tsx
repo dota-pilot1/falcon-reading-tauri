@@ -385,8 +385,6 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
       width: 120,
       valueFormatter: (params) => params.value ? statusLabels[params.value as ReadingMaterialStatus] : "",
     },
-    { field: "wordCount", headerName: "단어", width: 96, type: "rightAligned" },
-    { field: "estimatedMinutes", headerName: "분량", width: 96, type: "rightAligned" },
     { field: "collectedDate", headerName: "날짜", width: 130 },
   ], []);
   const refreshAll = async () => {
@@ -1184,7 +1182,7 @@ function MaterialCard({
       <button className="material-card-open" type="button" onClick={onSelect}>
         <strong>{material.title}</strong>
         <span>{sourceTypeLabels[material.sourceType]} · {readingLevelLabel(material.level)}</span>
-        <small>{material.wordCount} words · {material.estimatedMinutes}분 · {material.collectedDate}</small>
+        <small>{material.collectedDate}</small>
         {assignedToday ? <small>오늘의 학습 지정됨</small> : null}
         <StatusBadge status={material.status} />
       </button>
