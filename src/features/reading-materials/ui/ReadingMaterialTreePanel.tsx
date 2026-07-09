@@ -31,6 +31,7 @@ export type FolderDialogState = {
 type ReadingMaterialTreePanelProps = {
   sections: ReadingTreeSection[];
   activeTreeId: string;
+  totalMaterialCount: number;
   collapsedSections: Set<string>;
   collapsedFolders: Set<number>;
   folderDialog: FolderDialogState | null;
@@ -66,6 +67,7 @@ type TreeContextMenuState = {
 export function ReadingMaterialTreePanel({
   sections,
   activeTreeId,
+  totalMaterialCount,
   collapsedSections,
   collapsedFolders,
   folderDialog,
@@ -139,6 +141,23 @@ export function ReadingMaterialTreePanel({
       </div>
 
       <div className="material-tree-sections">
+        <section className="material-tree-section">
+          <div className="material-tree-node-list">
+            <div className="material-tree-node-list-inner">
+              <div className="material-tree-node-wrap vocabulary-tree-root">
+                <button
+                  type="button"
+                  className={`material-tree-node ${activeTreeId === "all" ? "active" : ""}`}
+                  onClick={() => onSelect("all", { kind: "all" })}
+                >
+                  <FolderOpen size={15} />
+                  <span>전체 자료</span>
+                  <em>{totalMaterialCount}</em>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
         {sections.map((section) => (
           <TreeSection
             key={section.id}

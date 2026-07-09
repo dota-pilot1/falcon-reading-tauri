@@ -10,12 +10,14 @@ import {
   Folder,
   FolderOpen,
   Languages,
+  LayoutGrid,
   Link,
   Loader2,
   Play,
   Plus,
   Save,
   Search,
+  Table2,
   X,
 } from "lucide-react";
 import { defaultApiUrl, unauthorizedEventName } from "../shared/api/client";
@@ -97,6 +99,8 @@ type VocabularyFilter =
   | { kind: "date"; date: string }
   | { kind: "sourceType"; sourceType: ReadingSourceType }
   | { kind: "status"; status: "missingMeaning" | "hasNote" | "duplicate" };
+
+type MaterialViewMode = "cards" | "table";
 
 type VocabularyGridRow = ReadingVocabularyItem & {
   folderId: number | null;
@@ -299,6 +303,8 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   const [folderDialog, setFolderDialog] = useState<FolderDialogState | null>(null);
   const [folderManagementOpen, setFolderManagementOpen] = useState(false);
   const [folderDraftName, setFolderDraftName] = useState("");
+  const [materialQuery, setMaterialQuery] = useState("");
+  const [materialViewMode, setMaterialViewMode] = useState<MaterialViewMode>("cards");
   const [error, setError] = useState("");
   const [folderError, setFolderError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -329,13 +335,60 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
   }, [materials, selectedMaterialId]);
 
   const sections = useMemo(() => buildTreeSections(tree?.folders ?? [], tree), [tree]);
+  const totalMaterialCount = useMemo(
+    () => tree?.statuses.reduce((sum, status) => sum + status.count, 0) ?? (activeFilter.kind === "all" ? materials.length : 0),
+    [activeFilter.kind, materials.length, tree?.statuses],
+  );
   const childFolders = useMemo(
     () => folders.filter((folder) => folder.parentId === activeFolderId).sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id),
     [activeFolderId, folders],
   );
   const folderOptions = useMemo(() => buildFolderOptions(folders), [folders]);
+  const filteredMaterials = useMemo(() => {
+    const normalizedQuery = materialQuery.trim().toLowerCase();
+    if (!normalizedQuery) return materials;
+    return materials.filter((material) => [
+      material.title,
+      sourceTypeLabels[material.sourceType],
+      readingLevelLabel(material.level),
+      statusLabels[material.status],
+      material.collectedDate,
+      material.sourceUrl ?? "",
+    ].some((value) => value.toLowerCase().includes(normalizedQuery)));
+  }, [materialQuery, materials]);
   const selectedMaterials = useMemo(() => materials.filter((material) => selectedIds.has(material.id)), [materials, selectedIds]);
   const { data: selectedVocabulary = [], isLoading: loadingSelectedVocabulary } = useReadingMaterialVocabularyQuery(apiUrl, token, selectedMaterialId);
+  const materialColumnDefs = useMemo<ColDef<ReadingMaterial>[]>(() => [
+    {
+      field: "title",
+      headerName: "자료",
+      pinned: "left",
+      flex: 1.5,
+      minWidth: 240,
+      cellClass: "material-title-cell",
+    },
+    {
+      field: "sourceType",
+      headerName: "유형",
+      width: 130,
+      valueFormatter: (params) => params.value ? sourceTypeLabels[params.value as ReadingSourceType] : "",
+    },
+    {
+      field: "level",
+      headerName: "난이도",
+      width: 120,
+      valueFormatter: (params) => params.value ? readingLevelLabel(params.value as ReadingMaterial["level"]) : "",
+    },
+    {
+      field: "status",
+      headerName: "상태",
+      width: 120,
+      valueFormatter: (params) => params.value ? statusLabels[params.value as ReadingMaterialStatus] : "",
+    },
+    { field: "wordCount", headerName: "단어", width: 96, type: "rightAligned" },
+    { field: "estimatedMinutes", headerName: "분량", width: 96, type: "rightAligned" },
+    { field: "collectedDate", headerName: "날짜", width: 130 },
+  ], []);
   const refreshAll = async () => {
     setRefreshing(true);
     setError("");
@@ -572,6 +625,7 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
           <ReadingMaterialTreePanel
             sections={sections}
             activeTreeId={activeTreeId}
+            totalMaterialCount={totalMaterialCount}
             collapsedSections={collapsedSections}
             collapsedFolders={collapsedFolders}
             folderDialog={folderDialog}
@@ -665,8 +719,8 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
             <div className="material-inline-list">
               <div className="material-inline-head">
                 <strong>
-                  {activeFolderId === null ? "독해 자료" : "이 폴더의 독해 자료"}
-                  <span>{materials.length}</span>
+                  {activeTreeTitle(activeTreeId, sections)}
+                  <span>{materialQuery.trim() ? `${filteredMaterials.length}/${materials.length}` : materials.length}</span>
                 </strong>
                 <div className="material-inline-head-actions">
                   <Button type="button" variant="outline" size="sm" onClick={openMoveDialog} disabled={selectedIds.size === 0}>
@@ -678,19 +732,78 @@ function ReadingMaterialsView({ apiUrl, token }: { apiUrl: string; token: string
                 </div>
               </div>
 
+              <div className="material-list-toolbar">
+                <label className="vocabulary-search material-search">
+                  <Search size={16} />
+                  <input
+                    value={materialQuery}
+                    placeholder="제목, 유형, 난이도, 상태 검색"
+                    onChange={(event) => setMaterialQuery(event.target.value)}
+                  />
+                </label>
+                <div className="material-view-switch" aria-label="자료 보기 방식">
+                  <button
+                    type="button"
+                    className={materialViewMode === "cards" ? "active" : ""}
+                    onClick={() => setMaterialViewMode("cards")}
+                  >
+                    <LayoutGrid size={14} /> 카드형
+                  </button>
+                  <button
+                    type="button"
+                    className={materialViewMode === "table" ? "active" : ""}
+                    onClick={() => setMaterialViewMode("table")}
+                  >
+                    <Table2 size={14} /> 테이블형
+                  </button>
+                </div>
+              </div>
+
               {materialsLoading ? <div className="material-empty">자료를 불러오는 중입니다.</div> : null}
               {!materialsLoading && materials.length === 0 ? <div className="material-empty">선택한 트리에 저장된 자료가 없습니다.</div> : null}
-              {materials.map((material) => (
-                <MaterialCard
-                  key={material.id}
-                  material={material}
-                  active={material.id === selectedMaterialId}
-                  assignedToday={todayQueue.includes(material.id)}
-                  checked={selectedIds.has(material.id)}
-                  onSelect={() => openMaterial(material)}
-                  onToggleSelection={() => setSelectedIds((prev) => toggleSetValue(prev, material.id))}
-                />
-              ))}
+              {!materialsLoading && materials.length > 0 && filteredMaterials.length === 0 ? <div className="material-empty">검색 조건에 맞는 자료가 없습니다.</div> : null}
+              {!materialsLoading && filteredMaterials.length > 0 && materialViewMode === "cards" ? (
+                <div className="material-card-grid">
+                  {filteredMaterials.map((material) => (
+                    <MaterialCard
+                      key={material.id}
+                      material={material}
+                      active={material.id === selectedMaterialId}
+                      assignedToday={todayQueue.includes(material.id)}
+                      checked={selectedIds.has(material.id)}
+                      onSelect={() => openMaterial(material)}
+                      onToggleSelection={() => setSelectedIds((prev) => toggleSetValue(prev, material.id))}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              {!materialsLoading && filteredMaterials.length > 0 && materialViewMode === "table" ? (
+                <div className="ag-theme-quartz reading-material-grid">
+                  <AgGridReact<ReadingMaterial>
+                    theme="legacy"
+                    rowData={filteredMaterials}
+                    columnDefs={materialColumnDefs}
+                    defaultColDef={{ sortable: true, filter: true, resizable: true }}
+                    getRowId={(params) => params.data.id}
+                    rowSelection={{
+                      mode: "multiRow",
+                      checkboxes: true,
+                      headerCheckbox: true,
+                      enableClickSelection: true,
+                    }}
+                    rowClassRules={{
+                      "reading-material-row-selected": (params) => params.data?.id === selectedMaterialId,
+                    }}
+                    onSelectionChanged={(event) => {
+                      setSelectedIds(new Set(event.api.getSelectedRows().map((material) => material.id)));
+                    }}
+                    onRowDoubleClicked={(event) => {
+                      if (event.data) openMaterial(event.data);
+                    }}
+                    overlayNoRowsTemplate="조건에 맞는 자료가 없습니다."
+                  />
+                </div>
+              ) : null}
             </div>
           </main>
         </div>

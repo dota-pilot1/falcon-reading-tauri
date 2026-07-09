@@ -1,6 +1,6 @@
 [package]
 name = "falcon-reading-tauri"
-version = "0.1.22"
+version = "0.1.23"
 description = "Falcon Reading desktop app"
 authors = ["Falcon Reading"]
 edition = "2021"

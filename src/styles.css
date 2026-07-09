@@ -2402,7 +2402,6 @@ button:disabled {
 
 .material-inline-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 10px;
   margin-bottom: 16px;
   padding: 12px;
@@ -2510,6 +2509,91 @@ button:disabled {
   background: #ffffff;
   font-size: 12px;
   font-weight: 850;
+}
+
+.material-list-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 420px) auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.material-search {
+  width: 100%;
+}
+
+.material-view-switch {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  min-height: 34px;
+  padding: 3px;
+  border: 1px solid #d7dce4;
+  border-radius: 8px;
+  background: #f1f5f9;
+}
+
+.material-view-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 82px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #64748b;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.material-view-switch button:hover {
+  color: #111827;
+  background: #ffffff;
+}
+
+.material-view-switch button.active {
+  border-color: #d1d5db;
+  color: #111827;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.material-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.reading-material-grid {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: min(548px, calc(100vh - 410px));
+  min-height: 360px;
+  --ag-font-family: inherit;
+  --ag-font-size: 13px;
+  --ag-border-radius: 8px;
+  --ag-wrapper-border-radius: 8px;
+}
+
+.material-title-cell {
+  color: #111827;
+  font-weight: 950;
+}
+
+.reading-material-grid .ag-row.reading-material-row-selected,
+.reading-material-grid .ag-row.reading-material-row-selected.ag-row-hover {
+  background: #ecfdf5;
+}
+
+.reading-material-grid .ag-row.reading-material-row-selected .ag-cell {
+  color: #064e3b;
+  background: transparent;
 }
 
 .material-context-menu {
