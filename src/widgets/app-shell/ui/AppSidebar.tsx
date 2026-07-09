@@ -96,14 +96,14 @@ export function AppSidebar({
         </nav>
       </div>
 
-      <div className="grid justify-items-center gap-2 border-t border-[#d7e2dc] bg-[#edf5f1] px-1.5 pb-3 pt-2.5">
+      <div className="grid justify-items-center gap-2 border-t border-[#c9ddd4] bg-[#e9f3ee] px-1.5 pb-3 pt-2.5">
         <button
           type="button"
           className={
-            "grid h-[22px] w-[58px] place-items-center rounded-lg border text-[9px] font-black leading-none transition-colors " +
+            "grid h-[22px] w-[58px] place-items-center rounded-lg border text-[10px] font-black leading-none shadow-[0_2px_6px_rgba(15,23,42,0.05)] transition-colors " +
             (updateState?.status === "available"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100"
-              : "cursor-default border-zinc-200 bg-white text-zinc-400")
+              ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:border-emerald-400 hover:bg-emerald-100"
+              : "cursor-default border-zinc-300 bg-white text-zinc-600")
           }
           onClick={onInstallUpdate}
           disabled={updateState?.status !== "available" || updateBusy || !onInstallUpdate}
@@ -122,35 +122,35 @@ export function AppSidebar({
                 ? `${updateState.progress}%`
                 : updateState?.status === "available"
                   ? "업데이트"
-                  : "update"}
+                  : "최신"}
           </span>
         </button>
-        <div className="grid min-w-[58px] justify-items-center rounded-xl border border-zinc-200 bg-white px-2 py-1.5 text-zinc-500 shadow-[0_6px_14px_rgba(15,23,42,0.04)]">
-          <strong className="text-[11px] font-black leading-3.5 text-zinc-900">v{appVersion}</strong>
+        <div className="grid min-w-[58px] justify-items-center rounded-xl border border-zinc-300 bg-white px-2 py-1.5 text-zinc-700 shadow-[0_5px_12px_rgba(15,23,42,0.07)]">
+          <strong className="text-[11px] font-black leading-3.5 text-slate-950">v{appVersion}</strong>
         </div>
         {user ? (
         <div className="relative grid w-full justify-items-center" ref={accountRef}>
           <button
             type="button"
             className={
-              "grid min-h-14 w-full justify-items-center gap-1 rounded-[13px] border px-1 py-1.5 text-zinc-500 transition-all " +
+              "grid min-h-14 w-full justify-items-center gap-1 rounded-[13px] border px-1 py-1.5 text-zinc-700 transition-all " +
               (accountOpen
-                ? "border-[#d7e2dc] bg-white text-zinc-900 shadow-[0_8px_16px_rgba(15,23,42,0.07)]"
-                : "border-transparent bg-transparent hover:border-[#d7e2dc] hover:bg-white hover:text-zinc-900 hover:shadow-[0_8px_16px_rgba(15,23,42,0.07)]")
+                ? "border-[#b9d5ca] bg-white text-slate-950 shadow-[0_8px_16px_rgba(15,23,42,0.10)]"
+                : "border-transparent bg-transparent hover:border-[#b9d5ca] hover:bg-white hover:text-slate-950 hover:shadow-[0_8px_16px_rgba(15,23,42,0.10)]")
             }
             onClick={() => setAccountOpen((open) => !open)}
             aria-expanded={accountOpen}
             title={`${displayName} · ${roleName}`}
           >
-            <div className="relative grid h-[38px] w-[38px] place-items-center rounded-full border border-zinc-200 bg-white">
-              <div className="grid h-8 w-8 place-items-center rounded-full bg-zinc-100 text-[11px] font-black text-zinc-700">{displayName.slice(0, 2).toUpperCase()}</div>
+            <div className="relative grid h-[38px] w-[38px] place-items-center rounded-full border border-zinc-300 bg-white">
+              <div className="grid h-8 w-8 place-items-center rounded-full bg-zinc-100 text-[11px] font-black text-slate-800">{displayName.slice(0, 2).toUpperCase()}</div>
               <div className={`absolute bottom-0 right-[-1px] grid h-4 w-4 place-items-center rounded-full border-2 border-[#fafafa] ${connectionStatus === "online" ? "bg-emerald-50 text-emerald-700" : connectionStatus === "checking" ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-zinc-500"}`} aria-label={statusLabel[connectionStatus]}>
                 {connectionStatus === "checking" && <Loader2 className="spin" size={13} />}
                 {connectionStatus === "online" && <CheckCircle2 size={13} />}
                 {connectionStatus === "offline" && <CircleAlert size={13} />}
               </div>
             </div>
-            <span className="max-w-[54px] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] font-extrabold leading-3 text-zinc-500">{roleName}</span>
+            <span className="max-w-[54px] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] font-black leading-3 text-slate-700">{roleName}</span>
           </button>
 
           {accountOpen && (
@@ -200,8 +200,8 @@ export function AppSidebar({
         </div>
         ) : (
           <div className="grid w-full justify-items-center gap-1 rounded-[13px] px-1 py-1.5 text-zinc-500">
-            <div className="relative grid h-[38px] w-[38px] place-items-center rounded-full border border-zinc-200 bg-white">
-              <div className="grid h-8 w-8 place-items-center rounded-full bg-zinc-100 text-[11px] font-black text-zinc-700">G</div>
+            <div className="relative grid h-[38px] w-[38px] place-items-center rounded-full border border-zinc-300 bg-white">
+              <div className="grid h-8 w-8 place-items-center rounded-full bg-zinc-100 text-[11px] font-black text-slate-800">G</div>
               <div className="absolute bottom-0 right-[-1px] grid h-4 w-4 place-items-center rounded-full border-2 border-[#fafafa] bg-slate-100 text-zinc-500" aria-label={statusLabel.offline}>
                 <CircleAlert size={13} />
               </div>
@@ -209,7 +209,7 @@ export function AppSidebar({
             <span className="max-w-[54px] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] font-extrabold leading-3">로그인 필요</span>
           </div>
         )}
-        <button className="grid min-h-[38px] w-full place-items-center gap-[3px] rounded-xl border border-transparent bg-transparent text-[10px] font-extrabold text-zinc-500 hover:border-zinc-200 hover:bg-white hover:text-zinc-900" onClick={() => onOpenMenu("settings")} title="설정">
+        <button className="grid min-h-[38px] w-full place-items-center gap-[3px] rounded-xl border border-transparent bg-transparent text-[10px] font-black text-slate-700 hover:border-zinc-300 hover:bg-white hover:text-slate-950" onClick={() => onOpenMenu("settings")} title="설정">
           <Settings size={15} />
           <span className="leading-3">설정</span>
         </button>
